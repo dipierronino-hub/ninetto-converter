@@ -34,6 +34,7 @@ const CONFIG = {
   MARGINE_A4: 28.35,         // 1 cm
   // Livelli di compressione: qualità JPEG e risoluzione di ricampionamento
   COMPRESSIONE: {
+    leggera: null,                       // senza perdita: il testo resta vero, si ottimizza solo la struttura
     bassa:   { qualita: 0.85, dpi: 200 },
     media:   { qualita: 0.70, dpi: 150 },
     massima: { qualita: 0.50, dpi: 100 }
@@ -79,7 +80,7 @@ const STRUMENTI = {
     descrizione: 'JPG, PNG e WebP in un PDF unico multipagina o in PDF separati.',
     classe: 't-viola', tipo: 'immagine', minimo: 1,
     testoArea: 'Seleziona le immagini',
-    accept: 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp',
+    accept: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif',
     opzioni: `
       <fieldset class="gruppo-opzione"><legend>Orientamento pagina</legend><div class="scelte">
         ${SCELTA('orientamento', 'auto', 'Automatico', 'segue la foto', true)}
@@ -134,11 +135,12 @@ const STRUMENTI = {
     accept: 'application/pdf,.pdf',
     opzioni: `
       <fieldset class="gruppo-opzione"><legend>Livello di compressione</legend><div class="scelte">
+        ${SCELTA('livello', 'leggera', 'Leggera · mantiene il testo', 'nessuna perdita di qualità: ottimizza la struttura del file')}
         ${SCELTA('livello', 'bassa', 'Bassa compressione', 'alta qualità visiva · JPEG 85%')}
         ${SCELTA('livello', 'media', 'Media · consigliata', 'per email · JPEG 70% a 150 DPI', true)}
         ${SCELTA('livello', 'massima', 'Massima compressione', 'file minimo · JPEG 50%')}
       </div>
-      <p class="nota-opzione">Le pagine vengono trasformate in immagini: il testo non sarà più selezionabile né ricercabile, e i link interni si perdono.</p>
+      <p class="nota-opzione">Con i livelli Bassa, Media e Massima le pagine diventano immagini: il testo non sarà più selezionabile né ricercabile. Il livello Leggera conserva tutto ma riduce meno. Se il risultato non è più leggero, te lo segnalo e ti conviene tenere l'originale.</p>
       </fieldset>`,
     etichetta: () => stato.voci.length > 1 ? `Comprimi ${stato.voci.length} PDF (ZIP)` : 'Comprimi PDF',
     esegui: eseguiComprimi
@@ -185,6 +187,36 @@ const STRUMENTI = {
     alCambioOpzioni: aggiornaAnteprimaFoglio,
     esegui: eseguiExcelInPdf
   },
+  img2img: {
+    titolo: 'Converti immagini',
+    descrizione: 'Cambia formato (JPG, PNG, WebP), ridimensiona e alleggerisci una o tante immagini insieme.',
+    classe: 't-rosa', tipo: 'immagine', minimo: 1,
+    testoArea: 'Seleziona le immagini',
+    accept: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif',
+    opzioni: `
+      <fieldset class="gruppo-opzione"><legend>Formato di destinazione</legend><div class="scelte">
+        ${SCELTA('formatoDest', 'jpeg', 'JPG', 'il più compatibile, ideale per foto', true)}
+        ${SCELTA('formatoDest', 'png', 'PNG', 'senza perdita, mantiene la trasparenza')}
+        ${SCELTA('formatoDest', 'webp', 'WebP', 'moderno e leggerissimo')}
+      </div></fieldset>
+      <fieldset class="gruppo-opzione"><legend>Dimensione</legend><div class="scelte">
+        ${SCELTA('lato', '0', 'Originale', 'nessun ridimensionamento', true)}
+        ${SCELTA('lato', '2560', 'Grande', 'lato lungo 2560 px')}
+        ${SCELTA('lato', '1600', 'Media', 'lato lungo 1600 px · per email')}
+        ${SCELTA('lato', '1080', 'Piccola', 'lato lungo 1080 px · per WhatsApp e social')}
+      </div></fieldset>
+      <fieldset class="gruppo-opzione" id="gruppoQualita"><legend>Qualità (JPG e WebP)</legend><div class="scelte">
+        ${SCELTA('qualitaImg', '0.92', 'Alta', 'differenza invisibile', true)}
+        ${SCELTA('qualitaImg', '0.8', 'Bilanciata', 'file più leggeri')}
+        ${SCELTA('qualitaImg', '0.65', 'Leggera', 'massimo risparmio')}
+      </div></fieldset>`,
+    etichetta: () => {
+      const f = (valoreOpzione('formatoDest') || 'jpeg').replace('jpeg', 'jpg').toUpperCase();
+      return stato.voci.length > 1 ? `Converti ${stato.voci.length} immagini in ${f} (ZIP)` : `Converti in ${f}`;
+    },
+    alCambioOpzioni: () => { const g = $('gruppoQualita'); if (g) g.hidden = valoreOpzione('formatoDest') === 'png'; },
+    esegui: eseguiConvertiImmagini
+  },
   pdf2docx: {
     titolo: 'Estrai in Word',
     descrizione: 'Estrae il testo del PDF in un documento .docx modificabile.',
@@ -229,6 +261,9 @@ impostaAreaFile();
 el.svuota.addEventListener('click', () => { svuotaVoci(); aggiornaInterfaccia(); });
 el.azione.addEventListener('click', avviaElaborazione);
 $('bottoneIndietro').addEventListener('click', () => { location.hash = ''; });
+$('bottoneAnnulla').addEventListener('click', () => { if (stato.lavoro) { stato.lavoro.annullato = true; el.testoAvanz.textContent = 'Annullamento…'; } });
+// errori imprevisti: un messaggio chiaro invece del silenzio
+window.addEventListener('unhandledrejection', (e) => { console.error(e.reason); if (e.reason && e.reason.name !== 'Annullato') notifica('Si è verificato un errore imprevisto. Se continua, ricarica la pagina.', true); });
 el.opzioni.addEventListener('change', () => {
   const s = STRUMENTI[stato.strumento];
   if (s && s.alCambioOpzioni) s.alCambioOpzioni();
@@ -311,7 +346,7 @@ function impostaAreaFile() {
 function tipoFile(file) {
   const nome = file.name.toLowerCase();
   if (file.type === 'application/pdf' || nome.endsWith('.pdf')) return 'pdf';
-  if (/^image\/(jpeg|png|webp)$/.test(file.type) || /\.(jpe?g|png|webp)$/.test(nome)) return 'immagine';
+  if (/^image\/(jpeg|png|webp|gif|bmp|avif)$/.test(file.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/.test(nome)) return 'immagine';
   if (nome.endsWith('.docx')) return 'docx';
   if (/\.(xlsx|xls|csv|ods)$/.test(nome)) return 'foglio';
   return null;
@@ -338,7 +373,7 @@ function aggiungiFile(elencoFile) {
     el.lista.appendChild(creaElementoVoce(voce));
   }
   if (scartati.length) {
-    const atteso = { pdf: 'solo file PDF', immagine: 'solo immagini JPG, PNG o WebP', docx: 'solo file Word .docx', foglio: 'solo file .xlsx, .xls, .csv o .ods' }[s.tipo];
+    const atteso = { pdf: 'solo file PDF', immagine: 'solo immagini JPG, PNG, WebP, GIF, BMP o AVIF', docx: 'solo file Word .docx', foglio: 'solo file .xlsx, .xls, .csv o .ods' }[s.tipo];
     notifica(`Formato non supportato (${atteso}): ${scartati.join(', ')}`, true);
   }
   nascondiRisultato();
@@ -368,7 +403,10 @@ const ICONA = {
   rimuovi: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   maniglia: '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>',
   scarica: '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
-  penna: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>'
+  penna: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>',
+  spunta: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  condividi: '<svg viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="18.5" r="2.6"/><path d="m8.4 13.3 7.2 4M15.6 6.8l-7.2 4"/></svg>',
+  ricomincia: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/></svg>'
 };
 
 function creaElementoVoce(voce) {
@@ -581,6 +619,7 @@ function nascondiAvanzamento() { el.barra.hidden = true; el.riempimento.style.wi
 
 function nascondiRisultato() {
   if (stato.urlRisultato) URL.revokeObjectURL(stato.urlRisultato);
+  (stato.urlAnteprime || []).forEach((u) => URL.revokeObjectURL(u)); stato.urlAnteprime = [];
   stato.urlRisultato = null;
   el.risultato.hidden = true;
   el.risultato.replaceChildren();
@@ -594,17 +633,82 @@ function mostraRisultato(r) {
   nascondiRisultato();
   stato.urlRisultato = URL.createObjectURL(r.blob);
   el.risultato.classList.remove('errore');
-  el.risultato.innerHTML = `<h2></h2>${r.righe.map((x) => `<p>${x}</p>`).join('')}
-    <a class="scarica" download>${ICONA.scarica}<span></span></a>`;
+  const punto = r.nome.lastIndexOf('.'), base = punto > 0 ? r.nome.slice(0, punto) : r.nome, est = punto > 0 ? r.nome.slice(punto) : '';
+  el.risultato.innerHTML = `<div class="risultato-testa"><span class="spunta">${ICONA.spunta}</span><div><h2></h2>${r.righe.map((x) => `<p>${x}</p>`).join('')}</div></div>
+    <div class="anteprima-risultato" hidden></div>
+    <label class="rinomina"><span>Nome del file</span><span class="campo-nome"><input type="text" spellcheck="false" autocomplete="off"><em></em></span></label>
+    <div class="azioni-risultato">
+      <a class="scarica" download>${ICONA.scarica}<span></span></a>
+      <button type="button" class="bottone-secondario condividi" hidden>${ICONA.condividi}<span>Condividi</span></button>
+      <button type="button" class="bottone-secondario ancora">${ICONA.ricomincia}<span>Nuova conversione</span></button>
+    </div>`;
   el.risultato.querySelector('h2').textContent = r.titolo;
-  const a = el.risultato.querySelector('.scarica');
+  const a = el.risultato.querySelector('.scarica'), campo = el.risultato.querySelector('.rinomina input');
+  el.risultato.querySelector('.campo-nome em').textContent = est;
+  campo.value = base;
+  const nomeFinale = () => (campo.value.trim().replace(/[\\/:*?"<>|]+/g, '_') || base) + est;
+  const aggiornaNome = () => { a.download = nomeFinale(); a.querySelector('span').textContent = `Scarica (${formattaPeso(r.blob.size)})`; a.title = 'Scarica ' + a.download; };
+  campo.addEventListener('input', aggiornaNome);
+  campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); a.click(); } });
   a.href = stato.urlRisultato;
-  a.download = r.nome;
-  a.querySelector('span').textContent = `Scarica ${r.nome} (${formattaPeso(r.blob.size)})`;
+  aggiornaNome();
+  a.addEventListener('click', () => setTimeout(() => notifica(`Download avviato: ${a.download}`), 50));
+  // Condividi (telefono: WhatsApp, email, Drive…)
+  const cond = el.risultato.querySelector('.condividi');
+  const tipo = r.blob.type || (est === '.zip' ? 'application/zip' : 'application/octet-stream');
+  const prova = () => new File([r.blob], nomeFinale(), { type: tipo });
+  try { if (navigator.canShare && navigator.canShare({ files: [prova()] })) cond.hidden = false; } catch (e) { /* non disponibile */ }
+  cond.addEventListener('click', async () => {
+    try { await navigator.share({ files: [prova()], title: nomeFinale() }); }
+    catch (e) { if (!e || e.name !== 'AbortError') notifica('Condivisione non riuscita: usa Scarica', true); }
+  });
+  el.risultato.querySelector('.ancora').addEventListener('click', () => { svuotaVoci(); aggiornaInterfaccia(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
   if (/\.pdf$/i.test(r.nome)) aggiungiLinkEditor(r.blob, r.nome); // solo se il risultato è un PDF (non ZIP, immagini o .docx)
   el.risultato.hidden = false;
-  el.risultato.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  if (r.scaricaSubito) a.click();
+  el.risultato.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  mostraAnteprima(r).catch((e) => console.warn('anteprima', e));
+}
+
+/** Anteprima del risultato: pagine del PDF, l'immagine, oppure i file contenuti nello ZIP (ognuno scaricabile da solo). */
+async function mostraAnteprima(r) {
+  const box = el.risultato.querySelector('.anteprima-risultato');
+  if (!box) return;
+  const urls = (stato.urlAnteprime = stato.urlAnteprime || []);
+  const scheda = (contenuto, etichetta, blob, nome) => {
+    const s = document.createElement(blob ? 'a' : 'div');
+    s.className = 'scheda-anteprima';
+    if (blob) { const u = URL.createObjectURL(blob); urls.push(u); s.href = u; s.download = nome.split('/').pop(); s.title = 'Scarica ' + s.download; }
+    const f = document.createElement('div'); f.className = 'foto'; f.append(contenuto);
+    const t = document.createElement('span'); t.textContent = etichetta;
+    s.append(f, t); box.append(s); box.hidden = false;
+  };
+  const immagine = (blob) => { const u = URL.createObjectURL(blob); urls.push(u); const i = new Image(); i.alt = ''; i.decoding = 'async'; i.src = u; return i; };
+  if (r.file && r.file.length) {
+    const max = 12;
+    for (const f of r.file.slice(0, max)) {
+      if (!el.risultato.contains(box)) return;
+      const contenuto = /^image\//.test(f.blob.type) ? immagine(f.blob) : Object.assign(document.createElement('b'), { className: 'badge-tipo tipo-pdf', textContent: (f.nome.split('.').pop() || '').toUpperCase() });
+      scheda(contenuto, `${f.nome.split('/').pop()} · ${formattaPeso(f.blob.size)}`, f.blob, f.nome);
+    }
+    if (r.file.length > max) { const p = document.createElement('p'); p.className = 'altri'; p.textContent = `…e altri ${r.file.length - max} file nello ZIP`; box.append(p); }
+    return;
+  }
+  if (/^image\//.test(r.blob.type)) { scheda(immagine(r.blob), 'Anteprima'); return; }
+  if (r.blob.type === 'application/pdf' || /\.pdf$/i.test(r.nome)) {
+    await workerPronto;
+    if (!workerPdf || workerPdf.destroyed) workerPdf = new pdfjsLib.PDFWorker();
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await r.blob.arrayBuffer()), worker: workerPdf, isEvalSupported: false }).promise;
+    try {
+      const n = Math.min(pdf.numPages, 4);
+      for (let i = 1; i <= n; i++) {
+        if (!el.risultato.contains(box)) return;
+        const pagina = await pdf.getPage(i), vp = pagina.getViewport({ scale: 1 });
+        const canvas = await disegnaPagina(pagina, 260 / Math.max(vp.width, vp.height));
+        pagina.cleanup();
+        scheda(canvas, `Pagina ${i}${i === n && pdf.numPages > n ? ` di ${pdf.numPages}` : ''}`);
+      }
+    } finally { pdf.destroy(); }
+  }
 }
 
 /**
@@ -841,6 +945,7 @@ async function eseguiPdfInImmagini(lavoro) {
   const totale = totalePagine() || voci.length;
   const zip = new JSZip();
   let fatte = 0, ultimaImmagine = null, ridotte = false;
+  const elenco = [];
 
   for (const voce of voci) {
     const pdf = await apriPdfJs(voce);
@@ -859,7 +964,8 @@ async function eseguiPdfInImmagini(lavoro) {
         liberaCanvas(canvas);
         pagina.cleanup();
         ultimaImmagine = blob;
-        zip.file(`${cartella}pagina-${String(n).padStart(cifre, '0')}.${est}`, blob);
+        const nomeImg = `${cartella}pagina-${String(n).padStart(cifre, '0')}.${est}`;
+        zip.file(nomeImg, blob); elenco.push({ nome: nomeImg, blob });
         fatte++;
       }
     } finally {
@@ -881,7 +987,7 @@ async function eseguiPdfInImmagini(lavoro) {
   controllaAnnullato(lavoro);
   mostraAvanzamento(1, 'Fatto');
   mostraRisultato({ titolo: 'Immagini pronte! 🎉', righe: [`${fatte} pagine convertite in ${est.toUpperCase()} a ${dpi} DPI, in un unico archivio ZIP.`, ...nota],
-    blob, nome: `${voci.length > 1 ? 'pdf' : nomeBase}-immagini.zip`, scaricaSubito: true });
+    blob, nome: `${voci.length > 1 ? 'pdf' : nomeBase}-immagini.zip`, file: elenco, scaricaSubito: true });
 }
 
 /* ---------------------------------------------------------------------
@@ -924,6 +1030,7 @@ async function eseguiUnisci(lavoro) {
    --------------------------------------------------------------------- */
 async function eseguiComprimi(lavoro) {
   const { PDFDocument } = PDFLib;
+  if (valoreOpzione('livello') === 'leggera') return comprimiSenzaPerdita(lavoro);
   const livello = CONFIG.COMPRESSIONE[valoreOpzione('livello')] || CONFIG.COMPRESSIONE.media;
   const voci = stato.voci.slice();
   const totale = totalePagine() || voci.length;
@@ -955,16 +1062,44 @@ async function eseguiComprimi(lavoro) {
     risultati.push({ voce, byte, prima: voce.file.size, dopo: byte.byteLength });
   }
 
+  return concludiCompressione(lavoro, risultati);
+}
+
+/** Livello «Leggera»: riscrive il PDF con flussi di oggetti compressi e toglie i dati inutili.
+ *  Il testo resta vero (selezionabile), immagini e qualità restano identiche. */
+async function comprimiSenzaPerdita(lavoro) {
+  const { PDFDocument } = PDFLib;
+  const voci = stato.voci.slice(), risultati = [];
+  for (let i = 0; i < voci.length; i++) {
+    controllaAnnullato(lavoro);
+    mostraAvanzamento(i / voci.length, `File ${i + 1} di ${voci.length}: ottimizzo la struttura`);
+    await pausa();
+    let doc;
+    try { doc = await PDFDocument.load(await voci[i].file.arrayBuffer(), { updateMetadata: false }); }
+    catch (e) { e.nomeFile = voci[i].file.name; throw e; }
+    // via le miniature incorporate e i metadati XMP (spesso pesanti e inutili)
+    try { doc.catalog.delete(PDFLib.PDFName.of('Metadata')); } catch (e) { /* ignora */ }
+    doc.getPages().forEach((p) => { try { p.node.delete(PDFLib.PDFName.of('Thumb')); } catch (e) { /* ignora */ } });
+    const byte = await doc.save({ useObjectStreams: true, addDefaultPage: false });
+    risultati.push({ voce: voci[i], byte, prima: voci[i].file.size, dopo: byte.byteLength });
+  }
+  return concludiCompressione(lavoro, risultati);
+}
+
+async function concludiCompressione(lavoro, risultati) {
+  const voci = risultati.map((r) => r.voce);
+  // se un file non diventa più leggero, nel risultato resta l'originale
+  risultati.forEach((r) => { if (r.dopo >= r.prima) { r.originale = true; } });
   controllaAnnullato(lavoro);
   mostraAvanzamento(0.98, 'Salvataggio…');
   const prima = risultati.reduce((t, r) => t + r.prima, 0);
-  const dopo = risultati.reduce((t, r) => t + r.dopo, 0);
+  const dopo = risultati.reduce((t, r) => t + (risultati.length > 1 ? Math.min(r.dopo, r.prima) : r.dopo), 0);
   const righe = [confronto(prima, dopo)];
   if (risultati.length > 1) {
-    risultati.forEach((r) => righe.push(`<small>${escapeHtml(r.voce.file.name)}: ${formattaPeso(r.prima)} → ${formattaPeso(r.dopo)}</small>`));
+    risultati.forEach((r) => righe.push(`<small>${escapeHtml(r.voce.file.name)}: ${formattaPeso(r.prima)} → ${r.originale ? 'già ottimizzato, tenuto l\'originale' : formattaPeso(r.dopo)}</small>`));
   }
   const migliorato = dopo < prima;
-  if (!migliorato) righe.push('Il file era già ottimizzato: la versione compressa non è più leggera. Ti conviene tenere l\'originale o provare la compressione massima.');
+  if (!migliorato) righe.push(valoreOpzione('livello') === 'leggera' ? 'Il file era già ottimizzato: per ridurlo davvero prova il livello Media o Massima.' : 'Il file era già ottimizzato: la versione compressa non è più leggera. Ti conviene tenere l\'originale o provare la compressione massima.');
 
   let blob, nome;
   if (risultati.length === 1) {
@@ -972,13 +1107,63 @@ async function eseguiComprimi(lavoro) {
     nome = nomeSenzaEstensione(voci[0].file.name) + '-compresso.pdf';
   } else {
     const zip = new JSZip();
-    risultati.forEach((r) => zip.file(nomeUnico(zip, nomeSenzaEstensione(r.voce.file.name) + '-compresso.pdf'), r.byte));
+    for (const r of risultati) zip.file(nomeUnico(zip, nomeSenzaEstensione(r.voce.file.name) + (r.originale ? '.pdf' : '-compresso.pdf')), r.originale ? await r.voce.file.arrayBuffer() : r.byte);
     blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     nome = 'pdf-compressi.zip';
   }
   controllaAnnullato(lavoro);
   mostraAvanzamento(1, 'Fatto');
   mostraRisultato({ titolo: migliorato ? 'PDF compresso! 🎉' : 'Compressione completata', righe, blob, nome, scaricaSubito: migliorato });
+}
+
+/* ---------------------------------------------------------------------
+   MODULO 8 – Converti immagini (JPG, PNG, WebP; ridimensiona; in blocco)
+   --------------------------------------------------------------------- */
+async function eseguiConvertiImmagini(lavoro) {
+  const formato = valoreOpzione('formatoDest') || 'jpeg';
+  const lato = Number(valoreOpzione('lato')) || 0;
+  const qualita = formato === 'png' ? undefined : Number(valoreOpzione('qualitaImg')) || 0.92;
+  const mime = 'image/' + formato, est = formato === 'jpeg' ? 'jpg' : formato;
+  const voci = stato.voci.slice(), file = [];
+  let prima = 0, dopo = 0, webpNonSupportato = false;
+  for (let i = 0; i < voci.length; i++) {
+    controllaAnnullato(lavoro);
+    mostraAvanzamento(i / voci.length, `Immagine ${i + 1} di ${voci.length}`);
+    await pausa();
+    const voce = voci[i];
+    let sorgente;
+    try { sorgente = await createImageBitmap(voce.file, { imageOrientation: 'from-image' }); }
+    catch (e) { const err = new Error('immagine'); err.nomeFile = voce.file.name; throw err; }
+    let k = lato ? Math.min(1, lato / Math.max(sorgente.width, sorgente.height)) : 1;
+    k = Math.min(k, fattoreLimite(sorgente.width, sorgente.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(sorgente.width * k)); canvas.height = Math.max(1, Math.round(sorgente.height * k));
+    const ctx = canvas.getContext('2d');
+    if (formato === 'jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); } // JPG non ha trasparenza: sfondo bianco
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sorgente, 0, 0, canvas.width, canvas.height);
+    if (sorgente.close) sorgente.close();
+    let blob = await canvasInBlob(canvas, mime, qualita);
+    liberaCanvas(canvas);
+    if (blob.type !== mime) webpNonSupportato = true; // es. Safari vecchi: WebP non creabile
+    prima += voce.file.size; dopo += blob.size;
+    file.push({ nome: nomeSenzaEstensione(voce.file.name) + '.' + (blob.type === mime ? est : 'png'), blob });
+  }
+  controllaAnnullato(lavoro);
+  const righe = [`${voci.length} ${voci.length === 1 ? 'immagine convertita' : 'immagini convertite'} in ${est.toUpperCase()}${lato ? `, lato lungo massimo ${lato} px` : ''}.`, confronto(prima, dopo).replace('File originale', 'Prima').replace('File compresso', 'Dopo')];
+  if (webpNonSupportato) righe.push('Questo browser non sa creare file WebP: le immagini sono state salvate in PNG.');
+  if (file.length === 1) {
+    mostraAvanzamento(1, 'Fatto');
+    mostraRisultato({ titolo: 'Immagine pronta! 🎉', righe, blob: file[0].blob, nome: file[0].nome, scaricaSubito: false });
+    return;
+  }
+  mostraAvanzamento(0.97, 'Creazione dello ZIP…');
+  const zip = new JSZip();
+  file.forEach((f) => { f.nome = nomeUnico(zip, f.nome); zip.file(f.nome, f.blob); });
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(1, 'Fatto');
+  mostraRisultato({ titolo: 'Immagini pronte! 🎉', righe, blob, nome: 'immagini-convertite.zip', file, scaricaSubito: false });
 }
 
 function confronto(prima, dopo) {
@@ -1095,7 +1280,7 @@ function escapeHtml(s) {
 /* ---------- Tema chiaro / scuro ---------- */
 function impostaTema() {
   let salvato = null;
-  try { salvato = localStorage.getItem('nc-tema'); } catch (e) { /* storage non disponibile */ }
+  try { salvato = localStorage.getItem('ninetto.tema') || localStorage.getItem('nc-tema'); } catch (e) { /* storage non disponibile */ }
   if (salvato === 'light' || salvato === 'dark') document.documentElement.dataset.theme = salvato;
   $('bottoneTema').addEventListener('click', () => {
     const scuroAttuale = document.documentElement.dataset.theme
@@ -1103,7 +1288,7 @@ function impostaTema() {
       : matchMedia('(prefers-color-scheme: dark)').matches;
     const nuovo = scuroAttuale ? 'light' : 'dark';
     document.documentElement.dataset.theme = nuovo;
-    try { localStorage.setItem('nc-tema', nuovo); } catch (e) { /* ignora */ }
+    try { localStorage.setItem('ninetto.tema', nuovo); } catch (e) { /* ignora */ }
   });
 }
 

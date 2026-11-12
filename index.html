@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ninetto-converter</title>
   <meta name="description" content="Converti, unisci e comprimi PDF e immagini direttamente nel browser. Nessun file viene inviato online.">
-  <meta name="theme-color" content="#6d28d9">
+  <meta name="theme-color" content="#1e1b4b">
+  <script>
+    // tema chiaro/scuro scelto, applicato prima del disegno; condiviso con ninetto-pdf (stesso sito)
+    try { var t = localStorage.getItem('ninetto.tema') || localStorage.getItem('nc-tema'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { }
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
@@ -23,15 +27,16 @@
   <!-- Sfondo animato decorativo -->
   <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
 
+  <div class="barra-marchio">
   <header class="testata">
     <a class="marchio" href="#" aria-label="ninetto-converter, torna agli strumenti">
-      <img src="icon.svg" alt="" width="44" height="44">
-      <span class="marchio-nome">ninetto<span>-converter</span></span>
+      <img src="icon.svg" alt="" width="38" height="38">
+      <span class="marchio-testo"><span class="marchio-nome">ninetto<span>-converter</span></span><small class="marchio-sotto">Converti · unisci · comprimi</small></span>
     </a>
     <div class="testata-azioni">
       <a id="linkEditor" class="bottone-editor" href="https://dipierronino-hub.github.io/editor-pdf/" target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>
-        <span>Apri Editor PDF</span>
+        <span>Apri ninetto-pdf</span>
       </a>
       <button id="bottoneInstalla" class="bottone-icona" type="button" hidden title="Installa l'app" aria-label="Installa l'app">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
@@ -42,6 +47,7 @@
       </button>
     </div>
   </header>
+  </div>
 
   <div class="badge-privacy" role="note">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.4 3.4 8.2 8 9 4.6-.8 8-4.6 8-9V6l-8-3z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
@@ -56,7 +62,7 @@
     <!-- ============ DASHBOARD ============ -->
     <section id="vistaHome" class="vista">
       <div class="eroe">
-        <span class="eroe-etichetta">✨ 7 strumenti · gratis · senza registrazione</span>
+        <span class="eroe-etichetta">✨ 8 strumenti · gratis · senza registrazione</span>
         <h1 class="titolo-home">Converti, unisci e comprimi <span class="testo-arcobaleno">in un tocco</span></h1>
         <p class="sottotitolo-home">PDF, immagini, Word ed Excel: tutto avviene qui, nel tuo browser. I tuoi file non lasciano mai il dispositivo.</p>
       </div>
@@ -80,7 +86,13 @@
         <a class="tessera t-verde" href="#comprimi">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 4h18l8 8v32H12z"/><path d="M30 4v8h8"/><path d="m19 18 6 6 6-6M19 38l6-6 6 6M25 24v8"/></svg></span>
           <span class="tessera-titolo">Comprimi PDF</span>
-          <span class="tessera-testo">Riduci il peso del file per inviarlo via email</span>
+          <span class="tessera-testo">Riduci il peso con 4 livelli, anche mantenendo il testo</span>
+        </a>
+        <a class="tessera t-rosa" href="#img2img">
+          <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="6" width="20" height="16" rx="3"/><circle cx="10" cy="12" r="2"/><path d="m6 20 5-5 4 3 3-2 4 4"/><rect x="24" y="26" width="20" height="16" rx="3"/><path d="M28 36h12M28 31h8"/><path d="M30 8h6a4 4 0 0 1 4 4v8m0 0-3-3m3 3 3-3M18 40h-6a4 4 0 0 1-4-4v-8m0 0-3 3m3-3 3 3"/></svg></span>
+          <span class="tessera-nuovo">Nuovo</span>
+          <span class="tessera-titolo">Converti immagini</span>
+          <span class="tessera-testo">JPG, PNG, WebP tra loro, anche ridimensionate e in blocco</span>
         </a>
       </div>
 
@@ -88,19 +100,16 @@
       <div class="griglia-strumenti griglia-office">
         <a class="tessera t-blu" href="#docx2pdf">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 6h18l8 8v28H8z"/><path d="M26 6v8h8"/><path d="m13 20 3 12 3-8 3 8 3-12"/><path d="M30 30h12m-4-4 4 4-4 4"/></svg></span>
-          <span class="tessera-nuovo">Nuovo</span>
           <span class="tessera-titolo">Word in PDF</span>
           <span class="tessera-testo">Documenti .docx in PDF impaginati</span>
         </a>
         <a class="tessera t-smeraldo" href="#xlsx2pdf">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="8" width="28" height="30" rx="3"/><path d="M6 17h28M6 26h28M16 8v30M25 8v30"/><path d="M32 34h10m-4-4 4 4-4 4"/></svg></span>
-          <span class="tessera-nuovo">Nuovo</span>
           <span class="tessera-titolo">Excel in PDF</span>
           <span class="tessera-testo">.xlsx, .xls e .csv in tabelle PDF nitide</span>
         </a>
         <a class="tessera t-indaco" href="#pdf2docx">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 6h16l7 7v17H6z"/><path d="M22 6v7h7"/><path d="M11 18h12M11 23h9"/><path d="M24 26h18v16H24z"/><path d="m28 30 2 8 2-5 2 5 2-8"/></svg></span>
-          <span class="tessera-nuovo">Nuovo</span>
           <span class="tessera-titolo">Estrai in Word</span>
           <span class="tessera-testo">Il testo di un PDF in un .docx modificabile</span>
         </a>
@@ -144,6 +153,7 @@
       <div id="barraAvanzamento" class="avanzamento" hidden>
         <div class="avanzamento-testo"><span id="testoAvanzamento">Elaborazione…</span><span id="percentuale">0%</span></div>
         <div class="avanzamento-binario"><div id="riempimento" class="avanzamento-riempimento"></div></div>
+        <button id="bottoneAnnulla" class="bottone-link annulla-lavoro" type="button">Annulla</button>
       </div>
 
       <div id="risultato" class="risultato" hidden></div>

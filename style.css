@@ -482,3 +482,88 @@ body { background: var(--sfondo); }
   #areaStampa h1, #areaStampa h2, #areaStampa h3, #areaStampa h4, #areaStampa p[class*="eading"], #areaStampa p[class*="itle"] { break-after: avoid; }
   #areaStampa * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* =====================================================================
+   IDENTITÀ «ninetto» – stessa grafica di ninetto-pdf
+   (barra del marchio, colori del tema scuro, pulsanti, messaggi, risultato)
+   ===================================================================== */
+:root { --brand-grad: linear-gradient(135deg, #4f46e5, #7c3aed 55%, #c026d3); --rosa: linear-gradient(135deg, #ec4899, #8b5cf6); --ease: cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --sfondo: #0c0b1d; --sfondo-2: #1a1935; --testo: #eeeefe; --testo-tenue: #a3a6c6; --bordo: #2e2b56; }
+}
+:root[data-theme="dark"] { --sfondo: #0c0b1d; --sfondo-2: #1a1935; --testo: #eeeefe; --testo-tenue: #a3a6c6; --bordo: #2e2b56; }
+
+/* barra del marchio, identica a quella di ninetto-pdf */
+.barra-marchio {
+  position: sticky; top: 0; z-index: 10;
+  background: linear-gradient(120deg, #1e1b4b 0%, #312e81 55%, #4c1d95 100%); color: #fff;
+  box-shadow: 0 2px 12px -4px rgba(30, 27, 75, .6);
+}
+.barra-marchio .testata {
+  position: static; background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+  padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: 8px;
+}
+.barra-marchio .marchio img { width: 38px; height: 38px; border-radius: 11px; box-shadow: 0 4px 14px -4px rgba(0, 0, 0, .5); }
+.marchio-testo { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.barra-marchio .marchio-nome { font-size: 1.05rem; color: #fff; }
+.barra-marchio .marchio-nome span { background: linear-gradient(90deg, #f0abfc, #fdba74); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.marchio-sotto { font-size: .72rem; opacity: .72; white-space: nowrap; }
+.barra-marchio .bottone-editor {
+  animation: none;
+  height: 40px; padding: 0 14px; border-radius: 12px; font-size: .88rem;
+  background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16); transition: background .15s, transform .1s;
+}
+.barra-marchio .bottone-editor:hover { background: rgba(255, 255, 255, .2); }
+.barra-marchio .bottone-icona {
+  width: 40px; height: 40px; border-radius: 12px; border: 0; color: #fff;
+  background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+}
+.barra-marchio .bottone-icona:hover { background: rgba(255, 255, 255, .2); }
+@media (max-width: 420px) { .marchio-sotto { display: none; } .barra-marchio .bottone-editor { width: 40px; padding: 0; justify-content: center; } }
+.badge-privacy { margin-top: 14px; }
+
+/* nuova tessera */
+.t-rosa { --accento: var(--rosa); }
+@media (min-width: 960px) { .griglia-strumenti:not(.griglia-office) { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 560px) and (max-width: 959px) { .griglia-strumenti:not(.griglia-office) > :last-child { grid-column: 1 / -1; } }
+
+/* avanzamento con pulsante Annulla */
+.avanzamento { position: relative; padding: 14px; border-radius: var(--raggio); background: var(--sfondo-2); border: 1px solid var(--bordo); }
+.annulla-lavoro { display: block; margin: 8px 0 0 auto; color: var(--errore); }
+
+/* risultato: intestazione con spunta, anteprima, nome del file, azioni */
+.risultato { padding: 20px; animation: sale .35s var(--ease) both; }
+.risultato-testa { display: flex; gap: 14px; align-items: flex-start; }
+.risultato-testa .spunta { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--verde); color: #fff; box-shadow: 0 8px 20px -8px rgba(16, 185, 129, .8); animation: pop .45s var(--ease) both .1s; }
+.risultato-testa .spunta svg { width: 24px; height: 24px; stroke-width: 3; }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } 70% { transform: scale(1.12); } }
+.anteprima-risultato { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin: 16px 0 4px; }
+.scheda-anteprima { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; animation: sale .3s ease both; }
+.scheda-anteprima .foto { aspect-ratio: 3 / 4; border-radius: 12px; background: #fff; border: 1px solid var(--bordo); display: grid; place-items: center; overflow: hidden; box-shadow: 0 6px 16px -10px rgba(30, 27, 75, .5); transition: transform .15s; }
+.scheda-anteprima .foto img, .scheda-anteprima .foto canvas { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+a.scheda-anteprima:hover .foto { transform: translateY(-2px); border-color: var(--primario); }
+.scheda-anteprima span { font-size: .74rem; color: var(--testo-tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.anteprima-risultato .altri { grid-column: 1 / -1; margin: 0; color: var(--testo-tenue); font-size: .85rem; }
+.tipo-pdf { background: linear-gradient(135deg, #ef3340, #f97316); }
+.rinomina { display: block; margin-top: 14px; }
+.rinomina > span:first-child { display: block; font-weight: 700; font-size: .85rem; margin-bottom: 6px; }
+.campo-nome { display: flex; flex-wrap: nowrap; align-items: center; border: 2px solid var(--bordo); border-radius: 14px; background: var(--sfondo-2); overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.campo-nome:focus-within { border-color: var(--primario); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primario) 22%, transparent); }
+.campo-nome input { flex: 1 1 auto; width: auto; display: block; min-width: 0; color: var(--testo); border: 0; background: none; padding: 12px 14px; font-size: 16px; font-weight: 600; outline: 0; }
+.campo-nome em { flex: none; font-style: normal; padding: 0 14px; color: var(--testo-tenue); font-weight: 700; }
+.azioni-risultato { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.azioni-risultato .scarica { margin-top: 0; padding: 14px 24px; font-size: 1.02rem; }
+.bottone-secondario {
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; border-radius: 999px;
+  border: 1px solid var(--bordo); background: var(--sfondo-2); font-weight: 700; transition: border-color .15s, transform .1s;
+}
+.bottone-secondario:hover { border-color: var(--primario); }
+.bottone-secondario:active { transform: scale(.97); }
+.bottone-secondario svg { width: 18px; height: 18px; }
+@media (max-width: 520px) { .azioni-risultato .scarica { width: 100%; justify-content: center; } .bottone-secondario { flex: 1; justify-content: center; } }
+
+/* messaggi: stesso stile di ninetto-pdf */
+.toast { border-radius: 14px; padding: 12px 18px; font-weight: 600; box-shadow: 0 24px 60px -18px rgba(23, 21, 58, .6); transition: opacity .2s, transform .25s var(--ease); }
+:root[data-theme="dark"] .toast { background: #2c2958; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { background: #2c2958; } }
+@media (prefers-reduced-motion: reduce) { .risultato, .risultato-testa .spunta, .scheda-anteprima { animation: none; } }
