@@ -14,7 +14,7 @@
 const CONFIG = {
   // Indirizzo aperto dal pulsante "Apri Editor PDF" (es. 'https://tuosito.github.io/editor-pdf/').
   // Se resta vuoto il pulsante avvisa che l'indirizzo non è ancora impostato.
-  EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/?v=3',
+  EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/',
   // Librerie per Word ed Excel: si scaricano solo quando apri lo strumento che le usa
   // (versioni fissate; il service worker le salva per l'uso offline)
   LIB: {
@@ -367,7 +367,8 @@ const ICONA = {
   giu: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
   rimuovi: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   maniglia: '<svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>',
-  scarica: '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>'
+  scarica: '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
+  penna: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>'
 };
 
 function creaElementoVoce(voce) {
@@ -600,9 +601,41 @@ function mostraRisultato(r) {
   a.href = stato.urlRisultato;
   a.download = r.nome;
   a.querySelector('span').textContent = `Scarica ${r.nome} (${formattaPeso(r.blob.size)})`;
+  if (/\.pdf$/i.test(r.nome)) aggiungiLinkEditor(r.blob, r.nome); // solo se il risultato è un PDF (non ZIP, immagini o .docx)
   el.risultato.hidden = false;
   el.risultato.scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (r.scaricaSubito) a.click();
+}
+
+/**
+ * Aggiunge sotto il download il pulsante secondario "Apri in ninetto-pdf".
+ * Le due app stanno sullo stesso dominio (dipierronino-hub.github.io): il PDF viene messo
+ * nella cache "editor-pdf-condivisi", la stessa che ninetto-pdf usa per i file condivisi,
+ * e l'editor aperto con ?shared=1 lo carica da solo. Niente esce dal dispositivo.
+ * @param {Blob|null} blob PDF appena creato (null = link semplice all'editor)
+ */
+function aggiungiLinkEditor(blob, nome) {
+  if (!CONFIG.EDITOR_PDF_URL) return;
+  const box = document.createElement('div');
+  box.className = 'verso-editor';
+  box.innerHTML = `<span>Vuoi firmarlo o annotarlo?</span>
+    <a class="bottone-verso-editor" target="_blank" rel="noopener">${ICONA.penna}<span>Apri ninetto-pdf</span></a>`;
+  const link = box.querySelector('a');
+  link.href = CONFIG.EDITOR_PDF_URL;
+  el.risultato.appendChild(box);
+  if (!blob || !('caches' in window)) return;
+  const chiave = new URL('condiviso-0', CONFIG.EDITOR_PDF_URL).href; // stessa cartella dell'editor
+  (async () => {
+    try {
+      const cache = await caches.open('editor-pdf-condivisi');
+      for (const k of await cache.keys()) await cache.delete(k); // un solo file alla volta
+      await cache.put(chiave, new Response(blob, { headers: { 'content-type': 'application/pdf', 'x-nome': encodeURIComponent(nome) } }));
+      if (box.isConnected) {
+        link.href = CONFIG.EDITOR_PDF_URL + '?shared=1'; // l'editor apre subito questo PDF
+        link.querySelector('span').textContent = 'Apri in ninetto-pdf';
+      }
+    } catch (e) { /* cache non disponibile: resta il link semplice all'editor */ }
+  })();
 }
 
 function mostraErrore(testo) {
@@ -1304,6 +1337,7 @@ async function eseguiWordStampa(lavoro) {
   el.risultato.innerHTML = `<h2>Ultimo passaggio 🖨️</h2>
     <p>Nella finestra di stampa scegli <strong>Salva come PDF</strong> come stampante, poi tocca il pulsante <strong>PDF</strong> (o "Salva").</p>
     <p>La finestra non si è aperta? Tocca di nuovo il pulsante qui sotto.</p>`;
+  aggiungiLinkEditor(null); // il PDF lo salva la stampa: link semplice, poi lo si apre con «Apri»
   el.risultato.hidden = false;
 }
 

@@ -309,6 +309,19 @@ section.docx, section.docx * { hyphens: manual !important; -webkit-hyphens: manu
   border-radius: 999px; text-decoration: none; color: #fff; font-weight: 800; background: var(--verde); box-shadow: var(--ombra);
 }
 .risultato .scarica svg { width: 20px; height: 20px; }
+/* Suggerimento secondario sotto il download: apri il PDF in ninetto-pdf */
+.verso-editor {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--bordo); color: var(--testo-tenue); font-size: .95rem;
+}
+.bottone-verso-editor {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 999px;
+  border: 2px solid var(--primario); color: var(--primario); background: var(--sfondo-2);
+  font-weight: 700; text-decoration: none; transition: background .15s, color .15s;
+}
+.bottone-verso-editor:hover { background: var(--primario); color: #fff; }
+.bottone-verso-editor svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 480px) { .bottone-verso-editor { width: 100%; justify-content: center; } }
 .risultato.errore { background: rgba(220, 38, 38, .1); border-color: rgba(220, 38, 38, .45); }
 
 /* ---------- Bottone azione principale (fisso in basso sul telefono) ---------- */
