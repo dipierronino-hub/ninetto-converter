@@ -451,3 +451,21 @@ body { background: var(--sfondo); }
 .risultato .scarica { animation: pulsa 1.8s ease-in-out infinite; }
 @keyframes pulsa { 50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, .18), var(--ombra); } }
 .gruppo-opzione .etichetta { display: block; font-weight: 800; font-size: .95rem; margin-bottom: 10px; }
+
+/* ---------- Stampa del documento Word (metodo "PDF di qualità") ---------- */
+#areaStampa { display: none; }
+@media print {
+  body > *:not(#areaStampa) { display: none !important; }
+  html, body { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+  #areaStampa { display: block !important; color: #000; }
+  #areaStampa .docx-wrapper, #areaStampa .documento-stampa { background: none !important; padding: 0 !important; display: block !important; }
+  #areaStampa section.docx {
+    width: auto !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+    box-shadow: none !important; background: transparent !important; overflow: visible !important;
+  }
+  #areaStampa section.docx + section.docx, #areaStampa .documento-stampa + .documento-stampa { break-before: page; }
+  #areaStampa table { break-inside: auto; }
+  #areaStampa tr, #areaStampa img { break-inside: avoid; }
+  #areaStampa h1, #areaStampa h2, #areaStampa h3, #areaStampa h4, #areaStampa p[class*="eading"], #areaStampa p[class*="itle"] { break-after: avoid; }
+  #areaStampa * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

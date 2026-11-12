@@ -150,13 +150,15 @@ const STRUMENTI = {
     testoArea: 'Seleziona i file Word',
     accept: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     opzioni: `
-      <fieldset class="gruppo-opzione"><legend>Qualità</legend><div class="scelte">
-        ${SCELTA('qualitaWord', 'standard', 'Standard', 'file più leggero', true)}
-        ${SCELTA('qualitaWord', 'alta', 'Alta', 'testo più nitido, file più pesante')}
+      <fieldset class="gruppo-opzione"><legend>Metodo</legend><div class="scelte">
+        ${SCELTA('metodoWord', 'stampa', 'PDF di qualità · consigliato', 'testo vero e nitido, margini e salti pagina di Word. Si apre la finestra di stampa: scegli "Salva come PDF"', true)}
+        ${SCELTA('metodoWord', 'immagine', 'Download diretto', 'il PDF si scarica subito, ma ogni pagina è un\'immagine (testo non selezionabile)')}
       </div>
-      <p class="nota-opzione">Il PDF riproduce l'aspetto del documento (font, paragrafi, tabelle, immagini) come immagine di ogni pagina: il testo non sarà selezionabile. Funziona solo con .docx (non con il vecchio .doc).</p>
+      <p class="nota-opzione">Funziona solo con .docx (i vecchi .doc vanno prima salvati come .docx). I font che non sono sul telefono vengono sostituiti con font simili.</p>
       </fieldset>`,
-    etichetta: () => stato.voci.length > 1 ? `Converti ${stato.voci.length} file (ZIP)` : 'Converti in PDF',
+    etichetta: () => valoreOpzione('metodoWord') === 'immagine'
+      ? (stato.voci.length > 1 ? `Converti ${stato.voci.length} file (ZIP)` : 'Scarica PDF')
+      : 'Crea PDF (Salva come PDF)',
     esegui: eseguiWordInPdf
   },
   xlsx2pdf: {
@@ -1171,8 +1173,9 @@ function estensione(nome) {
    (html2canvas) lo fotografa sezione per sezione, pdf-lib compone il PDF.
    --------------------------------------------------------------------- */
 async function eseguiWordInPdf(lavoro) {
+  if (valoreOpzione('metodoWord') !== 'immagine') return eseguiWordStampa(lavoro);
   const anteprima = await librerieWord();
-  const scalaBase = valoreOpzione('qualitaWord') === 'alta' ? 2.5 : 1.6;
+  const scalaBase = 2;
   const voci = stato.voci.slice();
   const zip = voci.length > 1 ? new JSZip() : null;
   let ultimo = null, pagineTot = 0;
@@ -1209,7 +1212,9 @@ async function eseguiWordInPdf(lavoro) {
         const canvas = await html2pdf().set({
           html2canvas: { scale: scala, backgroundColor: '#ffffff', useCORS: true, logging: false }
         }).from(sezione).toCanvas().get('canvas');
-        await aggiungiCanvasComePagine(pdf, canvas, r.width * 0.75, altezzaPagina(sezione));
+        const cs = getComputedStyle(sezione);
+        await aggiungiCanvasComePagine(pdf, canvas, r.width * 0.75, altezzaPagina(sezione),
+          (parseFloat(cs.paddingTop) || 0) * 0.75, (parseFloat(cs.paddingBottom) || 0) * 0.75);
         liberaCanvas(canvas);
       }
       pagineTot += pdf.getPageCount();
@@ -1235,6 +1240,73 @@ async function eseguiWordInPdf(lavoro) {
   });
 }
 
+/**
+ * Metodo "PDF di qualità": il documento viene impaginato dal motore di stampa del browser,
+ * con il formato pagina e i margini del file Word. Il risultato ha testo vero (selezionabile e nitido).
+ */
+async function eseguiWordStampa(lavoro) {
+  const anteprima = await librerieWord();
+  const voci = stato.voci.slice();
+  const stampa = document.createElement('div');
+  stampa.id = 'areaStampa';
+  let regolePagina = '';
+  for (let i = 0; i < voci.length; i++) {
+    controllaAnnullato(lavoro);
+    mostraAvanzamento(i / voci.length, `Impaginazione di ${voci[i].file.name}…`);
+    await pausa();
+    const contenitore = document.createElement('div');
+    contenitore.className = 'documento-stampa';
+    try {
+      await anteprima.renderAsync(await leggiArrayBuffer(voci[i].file), contenitore, null, {
+        inWrapper: false, breakPages: true, ignoreLastRenderedPageBreak: true,
+        renderHeaders: false, renderFooters: false, renderFootnotes: true,
+        useBase64URL: true, experimental: true
+      });
+    } catch (e) {
+      const err = new Error('docx'); err.name = 'DocxNonValido'; err.nomeFile = voci[i].file.name; throw err;
+    }
+    const sezioni = contenitore.querySelectorAll('section.docx');
+    if (!sezioni.length) { const err = new Error('docx'); err.name = 'DocxNonValido'; err.nomeFile = voci[i].file.name; throw err; }
+    // Formato e margini della prima sezione diventano quelli della pagina di stampa
+    if (!regolePagina) {
+      const st = sezioni[0].style;
+      const m = (st.padding || '').split(/\s+/).filter(Boolean);
+      const [su, dx, giu, sx] = m.length === 4 ? m : m.length === 2 ? [m[0], m[1], m[0], m[1]] : ['2cm', '2cm', '2cm', '2cm'];
+      // docx-preview indica la pagina intera (margini compresi) in larghezza e altezza minima
+      const pt = (v) => (v.endsWith('pt') ? parseFloat(v) : v.endsWith('px') ? parseFloat(v) * 0.75 : NaN);
+      const w = pt(st.width || ''), h = pt(st.minHeight || '');
+      regolePagina = `@page { size: ${isFinite(w) && isFinite(h) ? `${w}pt ${h}pt` : 'A4'}; margin: ${su} ${dx} ${giu} ${sx}; }`;
+    }
+    stampa.appendChild(contenitore);
+  }
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(1, 'Apertura della stampa…');
+  const stile = document.createElement('style');
+  stile.id = 'stilePagina';
+  stile.textContent = regolePagina;
+  document.head.appendChild(stile);
+  document.body.appendChild(stampa);
+  await attendiFontEImmagini(stampa);
+  const titoloPrima = document.title;
+  document.title = voci.length === 1 ? nomeSenzaEstensione(voci[0].file.name) : 'documenti-word';
+  const pulisci = () => {
+    document.title = titoloPrima;
+    stampa.remove();
+    stile.remove();
+    window.removeEventListener('afterprint', pulisci);
+  };
+  window.addEventListener('afterprint', pulisci);
+  await pausa();
+  window.print();
+  // Su alcuni telefoni "afterprint" non arriva: puliamo comunque dopo un po'
+  setTimeout(() => { if (document.body.contains(stampa)) pulisci(); }, 60000);
+  el.risultato.classList.remove('errore');
+  el.risultato.innerHTML = `<h2>Ultimo passaggio 🖨️</h2>
+    <p>Nella finestra di stampa scegli <strong>Salva come PDF</strong> come stampante, poi tocca il pulsante <strong>PDF</strong> (o "Salva").</p>
+    <p>La finestra non si è aperta? Tocca di nuovo il pulsante qui sotto.</p>`;
+  el.risultato.hidden = false;
+}
+
 /** Riquadro fuori schermo in cui docx-preview disegna il documento */
 function creaPalcoscenico() {
   const div = document.createElement('div');
@@ -1258,8 +1330,12 @@ async function attendiFontEImmagini(contenitore) {
 
 /** Inserisce il canvas nel PDF; se il contenuto supera l'altezza di una pagina lo divide su più pagine,
  *  tagliando dove c'è uno spazio bianco (tra due righe di testo) e saltando le parti vuote. */
-async function aggiungiCanvasComePagine(pdf, canvas, larghezzaPt, altezzaPt) {
-  const pxPerPagina = Math.floor(canvas.width * (altezzaPt / larghezzaPt));
+async function aggiungiCanvasComePagine(pdf, canvas, larghezzaPt, altezzaPt, margineSu = 0, margineGiu = 0) {
+  const k = canvas.width / larghezzaPt;          // pixel per punto
+  const pxPerPagina = Math.floor(altezzaPt * k);
+  const pxSu = Math.round(margineSu * k), pxGiu = Math.round(margineGiu * k);
+  // Le pagine dopo la prima riprendono i margini di Word (in alto e in basso)
+  const pxContenuto = Math.max(pxPerPagina * 0.5, pxPerPagina - pxSu - pxGiu);
   const ctx = canvas.getContext('2d');
   const rigaBianca = (y) => {
     const d = ctx.getImageData(0, y, canvas.width, 1).data;
@@ -1270,15 +1346,19 @@ async function aggiungiCanvasComePagine(pdf, canvas, larghezzaPt, altezzaPt) {
 
   const fette = [];
   let y = 0;
-  while (canvas.height - y > pxPerPagina * 1.03) {
-    let taglio = y + pxPerPagina;
-    for (let t = taglio; t > taglio - pxPerPagina * 0.15; t--) { if (rigaBianca(t)) { taglio = t; break; } }
+  const spazio = () => (fette.length ? pxContenuto : pxPerPagina - pxGiu);
+  while (canvas.height - y > (fette.length ? pxContenuto + pxGiu : pxPerPagina) * 1.02) {
+    let taglio = y + spazio();
+    for (let t = taglio; t > taglio - spazio() * 0.15; t--) { if (rigaBianca(t)) { taglio = t; break; } }
     fette.push([y, taglio]);
     y = taglio;
+    while (y < canvas.height && rigaBianca(y) && y - taglio < pxSu) y++; // salta lo spazio bianco a inizio pagina
   }
   if (!fette.length || !zonaVuota(y, canvas.height)) fette.push([y, canvas.height]);
 
-  for (const [da, a] of fette) {
+  for (let n = 0; n < fette.length; n++) {
+    const [da, a] = fette[n];
+    const spostamento = n === 0 ? 0 : margineSu;
     const h = a - da;
     const fetta = document.createElement('canvas');
     fetta.width = canvas.width; fetta.height = h;
@@ -1289,8 +1369,8 @@ async function aggiungiCanvasComePagine(pdf, canvas, larghezzaPt, altezzaPt) {
     liberaCanvas(fetta);
     const img = await pdf.embedJpg(new Uint8Array(await jpeg.arrayBuffer()));
     const pagina = pdf.addPage([larghezzaPt, altezzaPt]);
-    const hPt = Math.min(altezzaPt, h * larghezzaPt / canvas.width);
-    pagina.drawImage(img, { x: 0, y: altezzaPt - hPt, width: larghezzaPt, height: hPt });
+    const hPt = Math.min(altezzaPt - spostamento, h / k);
+    pagina.drawImage(img, { x: 0, y: altezzaPt - spostamento - hPt, width: larghezzaPt, height: hPt });
   }
 }
 
