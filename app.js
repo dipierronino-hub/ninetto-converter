@@ -14,7 +14,17 @@
 const CONFIG = {
   // Indirizzo aperto dal pulsante "Apri Editor PDF" (es. 'https://tuosito.github.io/editor-pdf/').
   // Se resta vuoto il pulsante avvisa che l'indirizzo non è ancora impostato.
-  EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/',
+  EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/?v=3',
+  // Librerie per Word ed Excel: si scaricano solo quando apri lo strumento che le usa
+  // (versioni fissate; il service worker le salva per l'uso offline)
+  LIB: {
+    docxPreview: 'https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js',
+    html2pdf: 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.14.0/dist/html2pdf.bundle.min.js',
+    xlsx: 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    jspdf: 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',
+    autotable: 'https://cdn.jsdelivr.net/npm/jspdf-autotable@5.0.9/dist/jspdf.plugin.autotable.min.js',
+    docx: 'https://unpkg.com/docx@8.5.0/build/index.umd.js'
+  },
   // Worker di pdf.js: stessa versione della libreria in index.html
   PDFJS_WORKER: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   // Limite di pixel per un singolo canvas: oltre, i telefoni (soprattutto iPhone) si bloccano
@@ -132,6 +142,59 @@ const STRUMENTI = {
       </fieldset>`,
     etichetta: () => stato.voci.length > 1 ? `Comprimi ${stato.voci.length} PDF (ZIP)` : 'Comprimi PDF',
     esegui: eseguiComprimi
+  },
+  docx2pdf: {
+    titolo: 'Word in PDF',
+    descrizione: 'Converte documenti .docx in PDF impaginati, pagina per pagina.',
+    classe: 't-blu', tipo: 'docx', minimo: 1,
+    testoArea: 'Seleziona i file Word',
+    accept: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    opzioni: `
+      <fieldset class="gruppo-opzione"><legend>Qualità</legend><div class="scelte">
+        ${SCELTA('qualitaWord', 'standard', 'Standard', 'file più leggero', true)}
+        ${SCELTA('qualitaWord', 'alta', 'Alta', 'testo più nitido, file più pesante')}
+      </div>
+      <p class="nota-opzione">Il PDF riproduce l'aspetto del documento (font, paragrafi, tabelle, immagini) come immagine di ogni pagina: il testo non sarà selezionabile. Funziona solo con .docx (non con il vecchio .doc).</p>
+      </fieldset>`,
+    etichetta: () => stato.voci.length > 1 ? `Converti ${stato.voci.length} file (ZIP)` : 'Converti in PDF',
+    esegui: eseguiWordInPdf
+  },
+  xlsx2pdf: {
+    titolo: 'Excel in PDF',
+    descrizione: 'Trasforma fogli .xlsx, .xls o .csv in tabelle PDF nitide e leggibili.',
+    classe: 't-smeraldo', tipo: 'foglio', minimo: 1, singolo: true,
+    testoArea: 'Seleziona il file Excel o CSV',
+    accept: '.xlsx,.xls,.csv,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv',
+    opzioni: `
+      <div class="gruppo-opzione" id="gruppoFoglio" hidden>
+        <label class="etichetta" for="sceltaFoglio">Foglio da convertire</label>
+        <select id="sceltaFoglio" class="selettore"></select>
+        <div id="anteprimaFoglio" class="anteprima-foglio"></div>
+      </div>
+      <fieldset class="gruppo-opzione"><legend>Orientamento pagina A4</legend><div class="scelte">
+        ${SCELTA('orientamentoXls', 'orizzontale', 'Orizzontale', 'consigliato per fogli larghi', true)}
+        ${SCELTA('orientamentoXls', 'verticale', 'Verticale')}
+      </div></fieldset>
+      <fieldset class="gruppo-opzione"><legend>Larghezza colonne</legend><div class="scelte">
+        ${SCELTA('adatta', 'si', 'Adatta alla pagina', 'tutte le colonne in larghezza, testo ridotto se serve', true)}
+        ${SCELTA('adatta', 'no', 'Dimensione naturale', 'le colonne in eccesso continuano nella pagina dopo')}
+      </div></fieldset>`,
+    etichetta: () => 'Converti in PDF',
+    alCambioOpzioni: aggiornaAnteprimaFoglio,
+    esegui: eseguiExcelInPdf
+  },
+  pdf2docx: {
+    titolo: 'Estrai in Word',
+    descrizione: 'Estrae il testo del PDF in un documento .docx modificabile.',
+    classe: 't-indaco', tipo: 'pdf', minimo: 1,
+    testoArea: 'Seleziona i PDF',
+    accept: 'application/pdf,.pdf',
+    opzioni: `
+      <div class="gruppo-opzione">
+        <p class="nota-opzione" style="margin:0">Vengono estratti i paragrafi nell'ordine di lettura, con le dimensioni del testo e un salto pagina per ogni pagina del PDF. Immagini, colonne e tabelle complesse non vengono ricostruite. I PDF scansionati (solo immagini) non contengono testo da estrarre.</p>
+      </div>`,
+    etichetta: () => stato.voci.length > 1 ? `Estrai ${stato.voci.length} PDF (ZIP)` : 'Estrai in Word',
+    esegui: eseguiPdfInWord
   }
 };
 
@@ -164,7 +227,11 @@ impostaAreaFile();
 el.svuota.addEventListener('click', () => { svuotaVoci(); aggiornaInterfaccia(); });
 el.azione.addEventListener('click', avviaElaborazione);
 $('bottoneIndietro').addEventListener('click', () => { location.hash = ''; });
-el.opzioni.addEventListener('change', aggiornaInterfaccia);
+el.opzioni.addEventListener('change', () => {
+  const s = STRUMENTI[stato.strumento];
+  if (s && s.alCambioOpzioni) s.alCambioOpzioni();
+  aggiornaInterfaccia();
+});
 window.addEventListener('hashchange', instrada);
 instrada();
 
@@ -173,7 +240,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* =====================================================================
-   NAVIGAZIONE (#img2pdf, #pdf2img, #unisci, #comprimi)
+   NAVIGAZIONE (#img2pdf, #pdf2img, #unisci, #comprimi, #docx2pdf, #xlsx2pdf, #pdf2docx)
    ===================================================================== */
 function instrada() {
   const id = location.hash.replace('#', '');
@@ -243,21 +310,32 @@ function tipoFile(file) {
   const nome = file.name.toLowerCase();
   if (file.type === 'application/pdf' || nome.endsWith('.pdf')) return 'pdf';
   if (/^image\/(jpeg|png|webp)$/.test(file.type) || /\.(jpe?g|png|webp)$/.test(nome)) return 'immagine';
+  if (nome.endsWith('.docx')) return 'docx';
+  if (/\.(xlsx|xls|csv|ods)$/.test(nome)) return 'foglio';
   return null;
 }
 
 function aggiungiFile(elencoFile) {
+  if (!stato.strumento) instrada(); // l'hash è cambiato ma l'evento non è ancora arrivato
   if (!stato.strumento || stato.lavoro) return;
   const s = STRUMENTI[stato.strumento];
   const scartati = [];
-  for (const file of elencoFile) {
+  let nuovi = Array.from(elencoFile);
+  if (s.singolo) {
+    // Strumento a file singolo: il nuovo file sostituisce quello già caricato
+    const valido = nuovi.find((f) => tipoFile(f) === s.tipo);
+    nuovi.filter((f) => f !== valido).forEach((f) => { if (tipoFile(f) !== s.tipo) scartati.push(f.name); });
+    nuovi = valido ? [valido] : [];
+    if (valido) { stato.voci.forEach(liberaVoce); stato.voci = []; el.lista.replaceChildren(); }
+  }
+  for (const file of nuovi) {
     if (tipoFile(file) !== s.tipo) { scartati.push(file.name); continue; }
     const voce = { id: stato.prossimoId++, file, tipo: s.tipo, url: null, pagine: null, errore: null, password: null };
     stato.voci.push(voce);
     el.lista.appendChild(creaElementoVoce(voce));
   }
   if (scartati.length) {
-    const atteso = s.tipo === 'pdf' ? 'solo file PDF' : 'solo immagini JPG, PNG o WebP';
+    const atteso = { pdf: 'solo file PDF', immagine: 'solo immagini JPG, PNG o WebP', docx: 'solo file Word .docx', foglio: 'solo file .xlsx, .xls, .csv o .ods' }[s.tipo];
     notifica(`Formato non supportato (${atteso}): ${scartati.join(', ')}`, true);
   }
   nascondiRisultato();
@@ -306,6 +384,7 @@ function aggiornaDettagli(voce, li = trovaLi(voce.id)) {
   if (voce.errore) { d.textContent = voce.errore; return; }
   let testo = formattaPeso(voce.file.size);
   if (voce.pagine) testo += ` · ${voce.pagine} ${voce.pagine === 1 ? 'pagina' : 'pagine'}`;
+  if (voce.fogli) testo += ` · ${voce.fogli.length} ${voce.fogli.length === 1 ? 'foglio' : 'fogli'}`;
   if (voce.password) testo += ' · 🔒 sbloccato';
   d.textContent = testo;
 }
@@ -394,6 +473,11 @@ async function generaAnteprime() {
           img.decoding = 'async';
           await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error('immagine')); img.src = voce.url; });
           box.replaceChildren(img);
+        } else if (voce.tipo === 'docx') {
+          box.innerHTML = '<span class="badge-tipo tipo-word">DOCX</span>';
+        } else if (voce.tipo === 'foglio') {
+          box.innerHTML = `<span class="badge-tipo tipo-excel">${escapeHtml(estensione(voce.file.name).toUpperCase())}</span>`;
+          await preparaCartella(voce);
         } else {
           const pdf = await apriPdfJs(voce);
           try {
@@ -444,7 +528,9 @@ function aggiornaInterfaccia() {
   el.contenitoreLista.hidden = n === 0;
   el.conteggio.textContent = `${n} ${n === 1 ? 'file caricato' : 'file caricati'}`;
   el.suggerimento.hidden = n < 2;
-  el.sottotestoArea.textContent = n ? 'puoi aggiungerne altri, anche trascinandoli qui' : 'oppure trascinali qui · selezione multipla';
+  el.sottotestoArea.textContent = s.singolo
+    ? (n ? 'scegline un altro per sostituirlo' : 'oppure trascinalo qui')
+    : (n ? 'puoi aggiungerne altri, anche trascinandoli qui' : 'oppure trascinali qui · selezione multipla');
   el.lista.querySelectorAll('.voce-file').forEach((li, i) => {
     li.querySelector('.numero').textContent = i + 1;
     li.querySelector('.su').disabled = i === 0;
@@ -912,6 +998,11 @@ function messaggioErrore(e, voce) {
   const nome = (voce && voce.file.name) || (e && e.nomeFile);
   const chi = nome ? `"${nome}": ` : '';
   const testo = String((e && e.message) || e || '');
+  if (e && e.name === 'LibreriaNonCaricata') return `${chi}non riesco a scaricare i componenti per questo strumento. Serve la connessione la prima volta che lo usi, poi funziona anche offline.`;
+  if (e && e.name === 'DocxNonValido') return `${chi}documento Word non leggibile. Serve un file .docx valido (i vecchi .doc vanno prima salvati come .docx).`;
+  if (e && e.name === 'FoglioNonValido') return `${chi}foglio di calcolo non leggibile o protetto da password.`;
+  if (e && e.name === 'FoglioVuoto') return `${chi}i fogli scelti sono vuoti.`;
+  if (e && e.name === 'NessunTesto') return `${chi}il PDF non contiene testo (è una scansione): non c'è nulla da estrarre in Word.`;
   if (e && e.name === 'PasswordException') return `${chi}PDF protetto da password, non sbloccato.`;
   if (/encrypt/i.test(testo)) return `${chi}PDF protetto da password: non si può unire. Rimuovi la protezione (o comprimilo prima con questa app, che chiede la password) e riprova.`;
   if (e && (e.name === 'InvalidPDFException' || /invalid pdf|no pdf header|failed to parse/i.test(testo))) return `${chi}il file non è un PDF valido o è danneggiato.`;
@@ -989,4 +1080,479 @@ function impostaInstallazione() {
     bottone.hidden = true;
   });
   window.addEventListener('appinstalled', () => { bottone.hidden = true; notifica('App installata! 🎉'); });
+}
+
+/* =====================================================================
+   STRUMENTI OFFICE (Word ed Excel)
+   Le librerie si scaricano solo al primo uso di questi strumenti.
+   ===================================================================== */
+
+/* ---------- Caricamento librerie su richiesta ---------- */
+const scriptCaricati = {};
+function caricaScript(url) {
+  if (!scriptCaricati[url]) {
+    scriptCaricati[url] = new Promise((ok, ko) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.crossOrigin = 'anonymous';
+      s.onload = ok;
+      s.onerror = () => {
+        delete scriptCaricati[url];
+        s.remove();
+        const e = new Error('libreria');
+        e.name = 'LibreriaNonCaricata';
+        ko(e);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return scriptCaricati[url];
+}
+
+// docx-preview e la libreria docx usano entrambe il nome globale "docx":
+// ognuna viene salvata nella sua variabile e il nome globale viene ripristinato.
+let libDocxPreview = null, libDocx = null;
+async function caricaConNomeDocx(url) {
+  const prima = window.docx;
+  await caricaScript(url);
+  const lib = window.docx;
+  window.docx = prima;
+  return lib;
+}
+
+async function librerieWord() {
+  if (!libDocxPreview) libDocxPreview = await caricaConNomeDocx(CONFIG.LIB.docxPreview);
+  await caricaScript(CONFIG.LIB.html2pdf);
+  return libDocxPreview;
+}
+
+async function librerieExcel() {
+  await caricaScript(CONFIG.LIB.xlsx);
+  await caricaScript(CONFIG.LIB.jspdf);
+  await caricaScript(CONFIG.LIB.autotable);
+  return { XLSX: window.XLSX, jsPDF: window.jspdf.jsPDF };
+}
+
+async function libreriaDocx() {
+  if (!libDocx) libDocx = await caricaConNomeDocx(CONFIG.LIB.docx);
+  return libDocx;
+}
+
+function estensione(nome) {
+  const m = nome.match(/\.([^.]+)$/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+/* ---------------------------------------------------------------------
+   MODULO A – Word in PDF
+   docx-preview disegna il documento in un riquadro fuori schermo, html2pdf
+   (html2canvas) lo fotografa sezione per sezione, pdf-lib compone il PDF.
+   --------------------------------------------------------------------- */
+async function eseguiWordInPdf(lavoro) {
+  const anteprima = await librerieWord();
+  const scalaBase = valoreOpzione('qualitaWord') === 'alta' ? 2.5 : 1.6;
+  const voci = stato.voci.slice();
+  const zip = voci.length > 1 ? new JSZip() : null;
+  let ultimo = null, pagineTot = 0;
+
+  for (let i = 0; i < voci.length; i++) {
+    controllaAnnullato(lavoro);
+    const voce = voci[i];
+    const base = i / voci.length, quota = 1 / voci.length;
+    mostraAvanzamento(base, `Lettura di ${voce.file.name}…`);
+    const dati = await leggiArrayBuffer(voce.file);
+    const palco = creaPalcoscenico();
+    try {
+      try {
+        await anteprima.renderAsync(dati, palco, null, {
+          inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: false,
+          renderHeaders: true, renderFooters: true, renderFootnotes: true,
+          useBase64URL: true, experimental: true
+        });
+      } catch (e) {
+        const err = new Error('docx'); err.name = 'DocxNonValido'; err.nomeFile = voce.file.name; throw err;
+      }
+      await attendiFontEImmagini(palco);
+      const sezioni = Array.from(palco.querySelectorAll('section.docx'));
+      if (!sezioni.length) { const err = new Error('docx'); err.name = 'DocxNonValido'; err.nomeFile = voce.file.name; throw err; }
+
+      const pdf = await PDFLib.PDFDocument.create();
+      for (let n = 0; n < sezioni.length; n++) {
+        controllaAnnullato(lavoro);
+        mostraAvanzamento(base + quota * (n / sezioni.length), `${voce.file.name}: pagina ${n + 1} di ${sezioni.length}`);
+        await pausa();
+        const sezione = sezioni[n];
+        const r = sezione.getBoundingClientRect();
+        const scala = Math.min(scalaBase, Math.sqrt(CONFIG.MAX_PIXEL / (r.width * r.height)), CONFIG.MAX_LATO / r.height);
+        const canvas = await html2pdf().set({
+          html2canvas: { scale: scala, backgroundColor: '#ffffff', useCORS: true, logging: false }
+        }).from(sezione).toCanvas().get('canvas');
+        await aggiungiCanvasComePagine(pdf, canvas, r.width * 0.75, altezzaPagina(sezione));
+        liberaCanvas(canvas);
+      }
+      pagineTot += pdf.getPageCount();
+      const byte = await pdf.save({ useObjectStreams: true });
+      const nome = nomeSenzaEstensione(voce.file.name) + '.pdf';
+      if (zip) zip.file(nomeUnico(zip, nome), byte);
+      else ultimo = { blob: new Blob([byte], { type: 'application/pdf' }), nome };
+    } finally {
+      palco.remove();
+    }
+  }
+
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(0.98, 'Salvataggio…');
+  let blob, nome;
+  if (zip) { blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }); nome = 'word-in-pdf.zip'; }
+  else ({ blob, nome } = ultimo);
+  mostraAvanzamento(1, 'Fatto');
+  mostraRisultato({
+    titolo: 'PDF pronto! 🎉',
+    righe: [zip ? `${voci.length} documenti convertiti, ${pagineTot} pagine in totale.` : `${pagineTot} ${pagineTot === 1 ? 'pagina' : 'pagine'}.`],
+    blob, nome, scaricaSubito: true
+  });
+}
+
+/** Riquadro fuori schermo in cui docx-preview disegna il documento */
+function creaPalcoscenico() {
+  const div = document.createElement('div');
+  div.className = 'palcoscenico';
+  div.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(div);
+  return div;
+}
+
+/** Altezza di pagina (in punti) dichiarata dal documento Word per quella sezione */
+function altezzaPagina(sezione) {
+  const px = parseFloat(getComputedStyle(sezione).minHeight) || sezione.getBoundingClientRect().height;
+  return px * 0.75;
+}
+
+async function attendiFontEImmagini(contenitore) {
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  const immagini = Array.from(contenitore.querySelectorAll('img'));
+  await Promise.all(immagini.map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
+}
+
+/** Inserisce il canvas nel PDF; se il contenuto supera l'altezza di una pagina lo divide su più pagine,
+ *  tagliando dove c'è uno spazio bianco (tra due righe di testo) e saltando le parti vuote. */
+async function aggiungiCanvasComePagine(pdf, canvas, larghezzaPt, altezzaPt) {
+  const pxPerPagina = Math.floor(canvas.width * (altezzaPt / larghezzaPt));
+  const ctx = canvas.getContext('2d');
+  const rigaBianca = (y) => {
+    const d = ctx.getImageData(0, y, canvas.width, 1).data;
+    for (let k = 0; k < d.length; k += 4) if (d[k] < 245 || d[k + 1] < 245 || d[k + 2] < 245) return false;
+    return true;
+  };
+  const zonaVuota = (da, a) => { for (let y = da; y < a; y += 3) if (!rigaBianca(y)) return false; return true; };
+
+  const fette = [];
+  let y = 0;
+  while (canvas.height - y > pxPerPagina * 1.03) {
+    let taglio = y + pxPerPagina;
+    for (let t = taglio; t > taglio - pxPerPagina * 0.15; t--) { if (rigaBianca(t)) { taglio = t; break; } }
+    fette.push([y, taglio]);
+    y = taglio;
+  }
+  if (!fette.length || !zonaVuota(y, canvas.height)) fette.push([y, canvas.height]);
+
+  for (const [da, a] of fette) {
+    const h = a - da;
+    const fetta = document.createElement('canvas');
+    fetta.width = canvas.width; fetta.height = h;
+    const c = fetta.getContext('2d', { alpha: false });
+    c.fillStyle = '#fff'; c.fillRect(0, 0, fetta.width, h);
+    c.drawImage(canvas, 0, da, canvas.width, h, 0, 0, canvas.width, h);
+    const jpeg = await canvasInBlob(fetta, 'image/jpeg', 0.92);
+    liberaCanvas(fetta);
+    const img = await pdf.embedJpg(new Uint8Array(await jpeg.arrayBuffer()));
+    const pagina = pdf.addPage([larghezzaPt, altezzaPt]);
+    const hPt = Math.min(altezzaPt, h * larghezzaPt / canvas.width);
+    pagina.drawImage(img, { x: 0, y: altezzaPt - hPt, width: larghezzaPt, height: hPt });
+  }
+}
+
+/** Lettura del file come ArrayBuffer con FileReader (compatibile anche con browser datati) */
+function leggiArrayBuffer(file) {
+  return new Promise((ok, ko) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result);
+    r.onerror = () => ko(r.error || new Error('lettura'));
+    r.readAsArrayBuffer(file);
+  });
+}
+
+/* ---------------------------------------------------------------------
+   MODULO B – Excel in PDF (SheetJS + jsPDF + AutoTable)
+   --------------------------------------------------------------------- */
+
+/** Legge la cartella di lavoro, popola il selettore dei fogli e mostra l'anteprima */
+async function preparaCartella(voce) {
+  const { XLSX } = await librerieExcel();
+  const dati = await leggiArrayBuffer(voce.file);
+  let cartella;
+  try {
+    if (estensione(voce.file.name) === 'csv') {
+      const testo = decodificaTesto(new Uint8Array(dati));
+      const primaRiga = testo.split(/\r?\n/, 1)[0] || '';
+      const sep = [';', ',', '\t'].reduce((a, b) => (primaRiga.split(b).length > primaRiga.split(a).length ? b : a));
+      cartella = XLSX.read(testo, { type: 'string', FS: sep, raw: true });
+    } else {
+      cartella = XLSX.read(new Uint8Array(dati), { type: 'array', cellDates: true });
+    }
+  } catch (e) {
+    const err = new Error('foglio'); err.name = 'FoglioNonValido'; throw err;
+  }
+  voce.cartella = cartella;
+  voce.fogli = cartella.SheetNames.slice();
+  if (!stato.voci.includes(voce)) return;
+  const select = $('sceltaFoglio');
+  if (!select) return;
+  select.innerHTML = (voce.fogli.length > 1 ? '<option value="*">Tutti i fogli</option>' : '') +
+    voce.fogli.map((n, i) => `<option value="${i}">${escapeHtml(n)}</option>`).join('');
+  if (voce.fogli.length > 1) select.value = '0';
+  $('gruppoFoglio').hidden = false;
+  aggiornaAnteprimaFoglio();
+}
+
+/** CSV: prova UTF-8, altrimenti la codifica di Excel per Windows */
+function decodificaTesto(byte) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(byte).replace(/^﻿/, ''); }
+  catch (e) { return new TextDecoder('windows-1252').decode(byte); }
+}
+
+/** Righe del foglio come testo già formattato (date, valute, percentuali come in Excel) */
+function righeFoglio(foglio) {
+  const righe = XLSX.utils.sheet_to_json(foglio, { header: 1, raw: false, defval: '', blankrows: false });
+  let colonne = 0;
+  righe.forEach((r) => r.forEach((c, i) => { if (String(c).trim() !== '') colonne = Math.max(colonne, i + 1); }));
+  return righe
+    .map((r) => Array.from({ length: colonne }, (_, i) => (r[i] === undefined || r[i] === null ? '' : String(r[i]))))
+    .filter((r) => r.some((c) => c.trim() !== ''));
+}
+
+function fogliScelti(voce) {
+  const v = $('sceltaFoglio') ? $('sceltaFoglio').value : '0';
+  return v === '*' ? voce.fogli.map((_, i) => i) : [Number(v) || 0];
+}
+
+function aggiornaAnteprimaFoglio() {
+  const voce = stato.voci[0];
+  const box = $('anteprimaFoglio');
+  if (!box || !voce || !voce.cartella) return;
+  const indice = fogliScelti(voce)[0];
+  const righe = righeFoglio(voce.cartella.Sheets[voce.fogli[indice]]);
+  if (!righe.length) { box.innerHTML = '<p class="nota-opzione">Questo foglio è vuoto.</p>'; return; }
+  const MAXR = 12, MAXC = 8;
+  const cella = (t, tag) => `<${tag}>${escapeHtml(t.length > 30 ? t.slice(0, 29) + '…' : t)}</${tag}>`;
+  const intestazione = righe[0].slice(0, MAXC).map((c) => cella(c, 'th')).join('');
+  const corpo = righe.slice(1, MAXR).map((r) => `<tr>${r.slice(0, MAXC).map((c) => cella(c, 'td')).join('')}</tr>`).join('');
+  const altro = [];
+  if (righe.length > MAXR) altro.push(`${righe.length} righe`);
+  if (righe[0].length > MAXC) altro.push(`${righe[0].length} colonne`);
+  box.innerHTML = `<div class="tabella-scorrevole"><table><thead><tr>${intestazione}</tr></thead><tbody>${corpo}</tbody></table></div>` +
+    `<p class="nota-opzione">Anteprima di "${escapeHtml(voce.fogli[indice])}"${altro.length ? ` · in totale ${altro.join(' e ')}` : ''}</p>`;
+}
+
+async function eseguiExcelInPdf(lavoro) {
+  const { jsPDF } = await librerieExcel();
+  const voce = stato.voci[0];
+  if (!voce.cartella) await preparaCartella(voce);
+  const orizzontale = valoreOpzione('orientamentoXls') !== 'verticale';
+  const adatta = valoreOpzione('adatta') !== 'no';
+  const indici = fogliScelti(voce);
+  const doc = new jsPDF({ orientation: orizzontale ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+  const disegnaTabella = typeof window.autoTable === 'function' ? (opz) => window.autoTable(doc, opz) : (opz) => doc.autoTable(opz);
+  const margine = { top: 46, right: 28, bottom: 36, left: 28 };
+  let disegnati = 0, righeTot = 0;
+
+  for (let k = 0; k < indici.length; k++) {
+    controllaAnnullato(lavoro);
+    const nomeFoglio = voce.fogli[indici[k]];
+    mostraAvanzamento(k / indici.length, `Foglio "${nomeFoglio}"`);
+    await pausa();
+    const righe = righeFoglio(voce.cartella.Sheets[nomeFoglio]);
+    if (!righe.length) continue;
+    if (disegnati > 0) doc.addPage();
+    const colonne = righe[0].length;
+    // Con "adatta alla pagina" il testo si riduce quando le colonne sono tante
+    const corpo = adatta ? Math.max(5, Math.min(9, 9 - (colonne - (orizzontale ? 10 : 6)) * 0.4)) : 8;
+    disegnaTabella({
+      head: [righe[0]],
+      body: righe.slice(1),
+      startY: margine.top,
+      margin: margine,
+      theme: 'grid',
+      tableWidth: adatta ? 'auto' : 'wrap',
+      horizontalPageBreak: !adatta,
+      horizontalPageBreakRepeat: adatta ? null : 0,
+      styles: { font: 'helvetica', fontSize: corpo, cellPadding: corpo < 7 ? 2 : 3, overflow: 'linebreak', valign: 'middle', lineColor: [205, 213, 225], lineWidth: 0.4, textColor: [30, 27, 75] },
+      headStyles: { fillColor: [21, 128, 61], textColor: 255, fontStyle: 'bold', lineColor: [21, 128, 61] },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
+      didDrawPage: () => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(30, 27, 75);
+        doc.text(`${nomeSenzaEstensione(voce.file.name)} · ${nomeFoglio}`, margine.left, 28);
+      }
+    });
+    disegnati++;
+    righeTot += righe.length - 1;
+  }
+  if (!disegnati) { const e = new Error('vuoto'); e.name = 'FoglioVuoto'; throw e; }
+
+  // Numeri di pagina in basso a destra
+  const tot = doc.getNumberOfPages();
+  for (let i = 1; i <= tot; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 140);
+    const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+    doc.text(`Pagina ${i} di ${tot}`, w - margine.right, h - 16, { align: 'right' });
+  }
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(1, 'Fatto');
+  const blob = doc.output('blob');
+  mostraRisultato({
+    titolo: 'PDF pronto! 🎉',
+    righe: [`${disegnati} ${disegnati === 1 ? 'foglio' : 'fogli'}, ${righeTot} righe, ${tot} ${tot === 1 ? 'pagina' : 'pagine'} A4 ${orizzontale ? 'orizzontali' : 'verticali'}.`],
+    blob, nome: nomeSenzaEstensione(voce.file.name) + '.pdf', scaricaSubito: true
+  });
+}
+
+/* ---------------------------------------------------------------------
+   MODULO C – PDF in Word (pdf.js + docx)
+   --------------------------------------------------------------------- */
+async function eseguiPdfInWord(lavoro) {
+  const D = await libreriaDocx();
+  const voci = stato.voci.slice();
+  const totale = totalePagine() || voci.length;
+  const zip = voci.length > 1 ? new JSZip() : null;
+  let fatte = 0, ultimo = null, senzaTesto = 0;
+
+  for (const voce of voci) {
+    const pdf = await apriPdfJs(voce);
+    const paragrafi = [];
+    let pagineVuote = 0;
+    try {
+      for (let n = 1; n <= pdf.numPages; n++) {
+        controllaAnnullato(lavoro);
+        mostraAvanzamento(fatte / totale, `Pagina ${fatte + 1} di ${totale}`);
+        await pausa();
+        const pagina = await pdf.getPage(n);
+        const blocchi = await estraiParagrafi(pagina);
+        pagina.cleanup();
+        if (!blocchi.length) {
+          pagineVuote++;
+          blocchi.push({ testo: `[Pagina ${n}: nessun testo, probabilmente è un'immagine o una scansione]`, dimensione: 10, grassetto: false, rientro: 0, corsivo: true });
+        }
+        blocchi.forEach((b, i) => paragrafi.push(new D.Paragraph({
+          pageBreakBefore: i === 0 && n > 1,
+          spacing: { after: Math.round(b.dimensione * 6) },
+          indent: b.rientro > 12 ? { left: Math.round(b.rientro * 20) } : undefined,
+          children: [new D.TextRun({ text: b.testo, size: Math.round(b.dimensione * 2), bold: b.grassetto, italics: !!b.corsivo })]
+        })));
+        fatte++;
+      }
+    } finally {
+      pdf.destroy();
+    }
+    if (pagineVuote === pdf.numPages) senzaTesto++;
+    const documento = new D.Document({
+      creator: 'ninetto-converter',
+      title: nomeSenzaEstensione(voce.file.name),
+      styles: { default: { document: { run: { font: 'Calibri' } } } },
+      sections: [{
+        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } } },
+        children: paragrafi
+      }]
+    });
+    const blob = await D.Packer.toBlob(documento);
+    const nome = nomeSenzaEstensione(voce.file.name) + '.docx';
+    if (zip) zip.file(nomeUnico(zip, nome), blob);
+    else ultimo = { blob, nome };
+  }
+
+  if (senzaTesto === voci.length) {
+    const e = new Error('scansione'); e.name = 'NessunTesto'; throw e;
+  }
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(0.98, 'Salvataggio…');
+  let blob, nome;
+  if (zip) { blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }); nome = 'pdf-in-word.zip'; }
+  else ({ blob, nome } = ultimo);
+  mostraAvanzamento(1, 'Fatto');
+  const righe = [`${fatte} ${fatte === 1 ? 'pagina estratta' : 'pagine estratte'} in un documento Word modificabile.`];
+  if (senzaTesto) righe.push(`${senzaTesto} file senza testo (scansioni): per quelli serve un OCR.`);
+  mostraRisultato({ titolo: 'Documento Word pronto! 🎉', righe, blob, nome, scaricaSubito: true });
+}
+
+/**
+ * Estrae il testo di una pagina e lo ricompone in paragrafi:
+ * 1) frammenti → righe (stessa altezza), ordinate dall'alto in basso e da sinistra a destra;
+ * 2) righe vicine con lo stesso corpo → stesso paragrafo.
+ */
+async function estraiParagrafi(pagina) {
+  const vp = pagina.getViewport({ scale: 1 });
+  const contenuto = await pagina.getTextContent();
+  const pezzi = [];
+  for (const it of contenuto.items) {
+    if (!it.str || !it.str.trim()) continue;
+    const [x, y] = pdfjsLib.Util.applyTransform([it.transform[4], it.transform[5]], vp.transform);
+    const h = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+    const stile = contenuto.styles[it.fontName] || {};
+    pezzi.push({ x, y, h, w: it.width || 0, testo: it.str, grassetto: /bold|black|heavy/i.test(it.fontName + ' ' + (stile.fontFamily || '')) });
+  }
+  if (!pezzi.length) return [];
+  pezzi.sort((a, b) => a.y - b.y || a.x - b.x);
+
+  // 1) righe
+  const righe = [];
+  for (const p of pezzi) {
+    const riga = righe.find((r) => Math.abs(r.y - p.y) < Math.max(2, Math.min(r.h, p.h) * 0.5));
+    if (riga) { riga.pezzi.push(p); riga.h = Math.max(riga.h, p.h); }
+    else righe.push({ y: p.y, h: p.h, pezzi: [p] });
+  }
+  righe.sort((a, b) => a.y - b.y);
+  for (const r of righe) {
+    r.pezzi.sort((a, b) => a.x - b.x);
+    let testo = '', fine = null;
+    for (const p of r.pezzi) {
+      if (fine !== null && p.x - fine > p.h * 0.2 && !testo.endsWith(' ') && !p.testo.startsWith(' ')) testo += ' ';
+      testo += p.testo;
+      fine = p.x + p.w;
+    }
+    r.testo = testo.replace(/\s+/g, ' ').trim();
+    r.x = r.pezzi[0].x;
+    r.grassetto = r.pezzi.every((p) => p.grassetto);
+  }
+  const valide = righe.filter((r) => r.testo);
+  if (!valide.length) return [];
+
+  // Corpo del testo "normale" = altezza più frequente
+  const conteggio = {};
+  valide.forEach((r) => { const k = Math.round(r.h); conteggio[k] = (conteggio[k] || 0) + r.testo.length; });
+  const corpoBase = Number(Object.keys(conteggio).sort((a, b) => conteggio[b] - conteggio[a])[0]) || 10;
+  const sinistra = Math.min(...valide.map((r) => r.x));
+
+  // 2) paragrafi
+  const paragrafi = [];
+  let corrente = null, rigaPrec = null;
+  for (const r of valide) {
+    const stessoCorpo = corrente && Math.abs(r.h - corrente.h) <= Math.max(1, corrente.h * 0.15);
+    const vicina = rigaPrec && (r.y - rigaPrec.y) <= rigaPrec.h * 1.7;
+    if (corrente && stessoCorpo && vicina) {
+      corrente.testo = corrente.testo.endsWith('-') ? corrente.testo.slice(0, -1) + r.testo : corrente.testo + ' ' + r.testo;
+      corrente.grassetto = corrente.grassetto && r.grassetto;
+    } else {
+      corrente = { testo: r.testo, h: r.h, x: r.x, grassetto: r.grassetto };
+      paragrafi.push(corrente);
+    }
+    rigaPrec = r;
+  }
+  return paragrafi.map((p) => ({
+    testo: p.testo,
+    dimensione: Math.max(6, Math.min(40, Math.round(p.h * 2) / 2)),
+    grassetto: p.grassetto || p.h >= corpoBase * 1.25,
+    rientro: p.x - sinistra
+  }));
 }
