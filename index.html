@@ -17,10 +17,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="style.css">
 
-  <!-- Librerie open source da CDN (versioni fissate). Il service worker le salva per l'uso offline. -->
-  <script defer crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-  <script defer crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script defer crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Librerie open source incluse nell'app (cartella lib/, versioni fissate): nessun CDN esterno,
+       funzionano anche se un CDN è bloccato o irraggiungibile. Il service worker le salva per l'uso offline. -->
+  <script defer src="lib/pdf-lib.min.js"></script>
+  <script defer src="lib/pdf.min.js"></script>
+  <script defer src="lib/jszip.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -55,7 +56,7 @@
   </div>
 
   <div id="avvisoLibrerie" class="avviso-errore" hidden>
-    Non riesco a caricare le librerie di conversione. Collegati a internet e ricarica la pagina almeno una volta: dopo funzionerà anche offline.
+    Le librerie di conversione non si sono caricate. <a href="./" onclick="location.reload(); return false;">Ricarica la pagina</a>: se il problema resta, collegati a internet e riapri l'app una volta.
   </div>
 
   <main>

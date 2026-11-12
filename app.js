@@ -1,7 +1,7 @@
 /* =====================================================================
    ninetto-converter – logica dell'app
    Tutto avviene nel browser: i file non lasciano mai il dispositivo.
-   Librerie (caricate da CDN in index.html):
+   Librerie (incluse nella cartella lib/, caricate in index.html):
      - pdf-lib  → window.PDFLib     (creare / unire PDF)
      - pdf.js   → window.pdfjsLib   (leggere e disegnare le pagine PDF)
      - JSZip    → window.JSZip      (creare archivi .zip)
@@ -16,17 +16,18 @@ const CONFIG = {
   // Se resta vuoto il pulsante avvisa che l'indirizzo non è ancora impostato.
   EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/',
   // Librerie per Word ed Excel: si scaricano solo quando apri lo strumento che le usa
-  // (versioni fissate; il service worker le salva per l'uso offline)
+  // (copie locali in lib/ con versioni fissate: docx-preview 0.4.1, html2pdf.js 0.14.0, xlsx 0.18.5,
+  //  jspdf 4.2.1, jspdf-autotable 5.0.9, docx 8.5.0; il service worker le salva per l'uso offline)
   LIB: {
-    docxPreview: 'https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js',
-    html2pdf: 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.14.0/dist/html2pdf.bundle.min.js',
-    xlsx: 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-    jspdf: 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',
-    autotable: 'https://cdn.jsdelivr.net/npm/jspdf-autotable@5.0.9/dist/jspdf.plugin.autotable.min.js',
-    docx: 'https://unpkg.com/docx@8.5.0/build/index.umd.js'
+    docxPreview: 'lib/docx-preview.min.js',
+    html2pdf: 'lib/html2pdf.bundle.min.js',
+    xlsx: 'lib/xlsx.full.min.js',
+    jspdf: 'lib/jspdf.umd.min.js',
+    autotable: 'lib/jspdf.plugin.autotable.min.js',
+    docx: 'lib/docx.umd.js'
   },
-  // Worker di pdf.js: stessa versione della libreria in index.html
-  PDFJS_WORKER: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+  // Worker di pdf.js 3.11.174: stessa versione di lib/pdf.min.js
+  PDFJS_WORKER: 'lib/pdf.worker.min.js',
   // Limite di pixel per un singolo canvas: oltre, i telefoni (soprattutto iPhone) si bloccano
   MAX_PIXEL: 16000000,
   MAX_LATO: 8192,
@@ -1336,7 +1337,6 @@ function caricaScript(url) {
     scriptCaricati[url] = new Promise((ok, ko) => {
       const s = document.createElement('script');
       s.src = url;
-      s.crossOrigin = 'anonymous';
       s.onload = ok;
       s.onerror = () => {
         delete scriptCaricati[url];
