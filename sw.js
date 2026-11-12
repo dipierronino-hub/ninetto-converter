@@ -4,7 +4,7 @@
    Ad ogni modifica dei file dell'app aumenta VERSIONE: i telefoni scaricano la nuova versione. */
 'use strict';
 
-const VERSIONE = 'nc-v1';
+const VERSIONE = 'nc-v2';
 
 // File dell'app (stessa origine)
 const FILE_APP = [

@@ -14,7 +14,7 @@
 const CONFIG = {
   // Indirizzo aperto dal pulsante "Apri Editor PDF" (es. 'https://tuosito.github.io/editor-pdf/').
   // Se resta vuoto il pulsante avvisa che l'indirizzo non è ancora impostato.
-  EDITOR_PDF_URL: '',
+  EDITOR_PDF_URL: 'https://dipierronino-hub.github.io/editor-pdf/',
   // Worker di pdf.js: stessa versione della libreria in index.html
   PDFJS_WORKER: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   // Limite di pixel per un singolo canvas: oltre, i telefoni (soprattutto iPhone) si bloccano
