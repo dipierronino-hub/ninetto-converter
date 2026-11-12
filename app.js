@@ -331,6 +331,7 @@ function aggiungiFile(elencoFile) {
   for (const file of nuovi) {
     if (tipoFile(file) !== s.tipo) { scartati.push(file.name); continue; }
     const voce = { id: stato.prossimoId++, file, tipo: s.tipo, url: null, pagine: null, errore: null, password: null };
+    voce.copia = copiaInMemoria(voce);
     stato.voci.push(voce);
     el.lista.appendChild(creaElementoVoce(voce));
   }
@@ -341,6 +342,21 @@ function aggiungiFile(elencoFile) {
   nascondiRisultato();
   aggiornaInterfaccia();
   generaAnteprime();
+}
+
+/**
+ * Copia subito il contenuto del file in memoria.
+ * Su Android, i file scelti da Galleria, Drive o Download sono "prestati" a Chrome solo per pochi istanti:
+ * se si leggono più tardi compare l'errore "The requested file could not be read".
+ */
+async function copiaInMemoria(voce) {
+  const f = voce.file;
+  try {
+    const byte = await f.arrayBuffer();
+    voce.file = new File([byte], f.name, { type: f.type, lastModified: f.lastModified });
+  } catch (e) {
+    voce.errore = 'il telefono non permette di leggere questo file. Prova a scaricarlo prima nella memoria del telefono (es. cartella Download) e sceglilo da lì.';
+  }
 }
 
 /* ---------- Elemento della lista con miniatura e comandi ---------- */
@@ -462,8 +478,10 @@ async function generaAnteprime() {
     let voce;
     while ((voce = stato.voci.find((v) => !v.anteprimaFatta))) {
       voce.anteprimaFatta = true;
+      await voce.copia;
       const li = trovaLi(voce.id);
       if (!li) continue;
+      if (voce.errore) { li.querySelector('.miniatura').innerHTML = '<span aria-hidden="true">⚠️</span>'; aggiornaDettagli(voce); aggiornaInterfaccia(); continue; }
       const box = li.querySelector('.miniatura');
       try {
         if (voce.tipo === 'immagine') {
@@ -614,6 +632,9 @@ async function avviaElaborazione() {
   mostraAvanzamento(0, 'Preparazione…');
   aggiornaInterfaccia();
   try {
+    await Promise.all(stato.voci.map((v) => v.copia));
+    const illeggibile = stato.voci.find((v) => v.errore);
+    if (illeggibile) { mostraErrore(`"${illeggibile.file.name}": ${illeggibile.errore}`); return; }
     await s.esegui(lavoro);
   } catch (e) {
     if (e && e.name === 'Annullato') notifica('Elaborazione annullata');
@@ -1003,6 +1024,7 @@ function messaggioErrore(e, voce) {
   if (e && e.name === 'FoglioNonValido') return `${chi}foglio di calcolo non leggibile o protetto da password.`;
   if (e && e.name === 'FoglioVuoto') return `${chi}i fogli scelti sono vuoti.`;
   if (e && e.name === 'NessunTesto') return `${chi}il PDF non contiene testo (è una scansione): non c'è nulla da estrarre in Word.`;
+  if (e && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) return `${chi}il telefono non permette più di leggere il file. Toccalo con il cestino, poi sceglilo di nuovo (meglio dalla cartella Download).`;
   if (e && e.name === 'PasswordException') return `${chi}PDF protetto da password, non sbloccato.`;
   if (/encrypt/i.test(testo)) return `${chi}PDF protetto da password: non si può unire. Rimuovi la protezione (o comprimilo prima con questa app, che chiede la password) e riprova.`;
   if (e && (e.name === 'InvalidPDFException' || /invalid pdf|no pdf header|failed to parse/i.test(testo))) return `${chi}il file non è un PDF valido o è danneggiato.`;
