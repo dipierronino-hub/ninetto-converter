@@ -4,7 +4,7 @@
    Ad ogni modifica dei file dell'app aumenta VERSIONE: i telefoni scaricano la nuova versione. */
 'use strict';
 
-const VERSIONE = 'nc-v8';
+const VERSIONE = 'nc-v9';
 
 // File dell'app (stessa origine): prima la rete, se offline la cache
 const FILE_APP = [
@@ -41,9 +41,12 @@ self.addEventListener('install', (evento) => {
   evento.waitUntil((async () => {
     const cache = await caches.open(VERSIONE);
     // App e librerie principali: devono esserci tutte, altrimenti l'installazione si ripete
-    await cache.addAll(FILE_APP.concat(FILE_LIB.slice(0, 4)));
+    // cache: 'reload' = sempre dal server, mai una copia vecchia dalla cache HTTP del browser
+    // (GitHub Pages fa tenere i file al browser per 10 minuti)
+    const nuovo = (f) => new Request(f, { cache: 'reload' });
+    await cache.addAll(FILE_APP.concat(FILE_LIB.slice(0, 4)).map(nuovo));
     // Librerie Word/Excel: se una non arriva, verrà salvata al primo utilizzo
-    await Promise.all(FILE_LIB.slice(4).map((f) => cache.add(f).catch(() => {})));
+    await Promise.all(FILE_LIB.slice(4).map((f) => cache.add(nuovo(f)).catch(() => {})));
     await self.skipWaiting();
   })());
 });
@@ -68,7 +71,7 @@ self.addEventListener('fetch', (evento) => {
       const cache = await caches.open(VERSIONE);
       const trovata = await cache.match(url.origin + url.pathname);
       if (trovata) return trovata;
-      const r = await fetch(richiesta);
+      const r = await fetch(new Request(url.origin + url.pathname, { cache: 'reload' }));
       if (r.ok) cache.put(url.origin + url.pathname, r.clone());
       return r;
     })());
@@ -79,7 +82,8 @@ self.addEventListener('fetch', (evento) => {
   evento.respondWith((async () => {
     const cache = await caches.open(VERSIONE);
     try {
-      const r = await fetch(richiesta);
+      // 'no-cache': il browser chiede sempre al server se il file è cambiato (risposta 304 se è uguale)
+      const r = await fetch(new Request(richiesta.url, { cache: 'no-cache', credentials: 'same-origin' }));
       if (r.ok && url.pathname.startsWith(new URL('./', self.location).pathname)) {
         cache.put(richiesta.mode === 'navigate' ? './index.html' : richiesta, r.clone());
       }

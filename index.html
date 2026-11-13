@@ -19,10 +19,15 @@
 
   <!-- Librerie open source incluse nell'app (cartella lib/, versioni fissate): nessun CDN esterno,
        funzionano anche se un CDN è bloccato o irraggiungibile. Il service worker le salva per l'uso offline. -->
-  <script defer src="lib/pdf-lib.min.js"></script>
-  <script defer src="lib/pdf.min.js"></script>
-  <script defer src="lib/jszip.min.js"></script>
-  <script defer src="app.js"></script>
+  <script>
+    // registra gli errori di caricamento (file non scaricato o libreria che non parte) per il messaggio di diagnosi
+    window.__erroriCaricamento = [];
+    window.addEventListener('error', function (e) { var t = e.target; window.__erroriCaricamento.push(t && t.src ? 'non scaricato: ' + t.src.split('/').pop().split('?')[0] : (e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop().split('?')[0] + ')' : '')); }, true);
+  </script>
+  <script defer src="lib/pdf-lib.min.js?v=9"></script>
+  <script defer src="lib/pdf.min.js?v=9"></script>
+  <script defer src="lib/jszip.min.js?v=9"></script>
+  <script defer src="app.js?v=9"></script>
 </head>
 <body>
   <!-- Sfondo animato decorativo -->

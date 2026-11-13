@@ -11,6 +11,8 @@
 /* ---------------------------------------------------------------------
    CONFIGURAZIONE – modifica qui
    --------------------------------------------------------------------- */
+const VERSIONE_APP = 'nc-v9'; // uguale a VERSIONE in sw.js
+
 const CONFIG = {
   // Indirizzo aperto dal pulsante "Apri Editor PDF" (es. 'https://tuosito.github.io/editor-pdf/').
   // Se resta vuoto il pulsante avvisa che l'indirizzo non è ancora impostato.
@@ -236,8 +238,32 @@ const STRUMENTI = {
 /* =====================================================================
    AVVIO
    ===================================================================== */
-const librerieOk = !!(window.PDFLib && window.pdfjsLib && window.JSZip);
-if (!librerieOk) $('avvisoLibrerie').hidden = false;
+const librerieMancanti = [['pdf-lib', window.PDFLib], ['pdf.js', window.pdfjsLib], ['JSZip', window.JSZip]].filter((x) => !x[1]).map((x) => x[0]);
+const librerieOk = !librerieMancanti.length;
+if (librerieOk) { try { sessionStorage.removeItem('nc-riparazione'); } catch (e) { /* ignora */ } }
+else riparaLibrerie();
+
+/** Librerie mancanti: quasi sempre è una copia vecchia rimasta in cache (browser o service worker).
+    La prima volta svuota le cache dell'app e ricarica da GitHub Pages; se non basta mostra il motivo preciso. */
+async function riparaLibrerie() {
+  let giaProvato = false;
+  try { giaProvato = sessionStorage.getItem('nc-riparazione') === '1'; sessionStorage.setItem('nc-riparazione', '1'); } catch (e) { giaProvato = true; }
+  if (!giaProvato && navigator.onLine !== false) {
+    try {
+      if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+      if (window.caches) for (const n of await caches.keys()) if (n.startsWith('nc-')) await caches.delete(n);
+    } catch (e) { /* si ricarica comunque */ }
+    location.reload();
+    return;
+  }
+  const box = $('avvisoLibrerie');
+  const dettagli = document.createElement('small');
+  dettagli.style.cssText = 'display:block;margin-top:6px;opacity:.85;word-break:break-word';
+  const errori = (window.__erroriCaricamento || []).slice(0, 4).join(' · ');
+  dettagli.textContent = `Dettagli: mancano ${librerieMancanti.join(', ')}${errori ? ' – ' + errori : ''} – versione ${VERSIONE_APP} – ${navigator.userAgent}`;
+  box.append(dettagli);
+  box.hidden = false;
+}
 
 // pdf.js usa un "worker" separato. Lo scarichiamo con fetch (così passa dal service worker
 // e funziona offline) e lo avviamo da un blob URL dello stesso sito.
@@ -274,7 +300,7 @@ window.addEventListener('hashchange', instrada);
 instrada();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}));
 }
 
 /* =====================================================================
