@@ -24,10 +24,10 @@
     window.__erroriCaricamento = [];
     window.addEventListener('error', function (e) { var t = e.target; window.__erroriCaricamento.push(t && t.src ? 'non scaricato: ' + t.src.split('/').pop().split('?')[0] : (e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop().split('?')[0] + ')' : '')); }, true);
   </script>
-  <script defer src="lib/pdf-lib.min.js?v=9"></script>
-  <script defer src="lib/pdf.min.js?v=9"></script>
-  <script defer src="lib/jszip.min.js?v=9"></script>
-  <script defer src="app.js?v=9"></script>
+  <script defer src="lib/pdf-lib.min.js?v=10"></script>
+  <script defer src="lib/pdf.min.js?v=10"></script>
+  <script defer src="lib/jszip.min.js?v=10"></script>
+  <script defer src="app.js?v=10"></script>
 </head>
 <body>
   <!-- Sfondo animato decorativo -->
@@ -37,7 +37,7 @@
   <header class="testata">
     <a class="marchio" href="#" aria-label="ninetto-converter, torna agli strumenti">
       <img src="icon.svg" alt="" width="38" height="38">
-      <span class="marchio-testo"><span class="marchio-nome">ninetto<span>-converter</span></span><small class="marchio-sotto">Converti · unisci · comprimi</small></span>
+      <span class="marchio-testo"><span class="marchio-nome">ninetto<span>-converter</span></span><small class="marchio-sotto">Converti · unisci · dividi · comprimi</small></span>
     </a>
     <div class="testata-azioni">
       <a id="linkEditor" class="bottone-editor" href="https://dipierronino-hub.github.io/editor-pdf/" target="_blank" rel="noopener">
@@ -68,7 +68,7 @@
     <!-- ============ DASHBOARD ============ -->
     <section id="vistaHome" class="vista">
       <div class="eroe">
-        <span class="eroe-etichetta">✨ 8 strumenti · gratis · senza registrazione</span>
+        <span class="eroe-etichetta">✨ 9 strumenti · gratis · senza registrazione</span>
         <h1 class="titolo-home">Converti, unisci e comprimi <span class="testo-arcobaleno">in un tocco</span></h1>
         <p class="sottotitolo-home">PDF, immagini, Word ed Excel: tutto avviene qui, nel tuo browser. I tuoi file non lasciano mai il dispositivo.</p>
       </div>
@@ -89,6 +89,12 @@
           <span class="tessera-titolo">Unisci PDF</span>
           <span class="tessera-testo">Combina 2 o più PDF nell'ordine che preferisci</span>
         </a>
+        <a class="tessera t-ambra" href="#dividi">
+          <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 20V6h16l8 8v6"/><path d="M28 6v8h8"/><path d="M5 25h38" stroke-dasharray="3 4"/><path d="M12 30v12h24V30"/><path d="M17 36h14"/><path d="M17 14h7"/></svg></span>
+          <span class="tessera-nuovo">Nuovo</span>
+          <span class="tessera-titolo">Dividi PDF</span>
+          <span class="tessera-testo">Separa le pagine in più PDF e rinomina ogni file</span>
+        </a>
         <a class="tessera t-verde" href="#comprimi">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 4h18l8 8v32H12z"/><path d="M30 4v8h8"/><path d="m19 18 6 6 6-6M19 38l6-6 6 6M25 24v8"/></svg></span>
           <span class="tessera-titolo">Comprimi PDF</span>
@@ -96,7 +102,6 @@
         </a>
         <a class="tessera t-rosa" href="#img2img">
           <span class="tessera-icona"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="6" width="20" height="16" rx="3"/><circle cx="10" cy="12" r="2"/><path d="m6 20 5-5 4 3 3-2 4 4"/><rect x="24" y="26" width="20" height="16" rx="3"/><path d="M28 36h12M28 31h8"/><path d="M30 8h6a4 4 0 0 1 4 4v8m0 0-3-3m3 3 3-3M18 40h-6a4 4 0 0 1-4-4v-8m0 0-3 3m3-3 3 3"/></svg></span>
-          <span class="tessera-nuovo">Nuovo</span>
           <span class="tessera-titolo">Converti immagini</span>
           <span class="tessera-testo">JPG, PNG, WebP tra loro, anche ridimensionate e in blocco</span>
         </a>

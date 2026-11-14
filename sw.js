@@ -4,7 +4,7 @@
    Ad ogni modifica dei file dell'app aumenta VERSIONE: i telefoni scaricano la nuova versione. */
 'use strict';
 
-const VERSIONE = 'nc-v9';
+const VERSIONE = 'nc-v10';
 
 // File dell'app (stessa origine): prima la rete, se offline la cache
 const FILE_APP = [

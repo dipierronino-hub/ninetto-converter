@@ -11,7 +11,7 @@
 /* ---------------------------------------------------------------------
    CONFIGURAZIONE – modifica qui
    --------------------------------------------------------------------- */
-const VERSIONE_APP = 'nc-v9'; // uguale a VERSIONE in sw.js
+const VERSIONE_APP = 'nc-v10'; // uguale a VERSIONE in sw.js
 
 const CONFIG = {
   // Indirizzo aperto dal pulsante "Apri Editor PDF" (es. 'https://tuosito.github.io/editor-pdf/').
@@ -70,8 +70,22 @@ const stato = {
   prossimoId: 1
 };
 
+// Piano dello strumento «Dividi PDF»
+const divisione = {
+  voceId: null,          // PDF a cui si riferisce il piano
+  chiave: null,          // modo + intervalli: se non cambia, il piano non si ridisegna
+  parti: [],             // [{ da, a }] pagine 1..n incluse
+  errore: null,          // intervalli scritti male
+  nomi: new Map(),       // "da-a" → nome scelto dall'utente (resta anche cambiando modo)
+  escluse: new Set(),    // "da-a" dei file senza spunta
+  miniature: new Map(),  // numero pagina → { blob, url }
+  timer: null
+};
+const chiaveParte = (p) => `${p.da}-${p.a}`;
+let miniatureDivisioneInCorso = false;
+
 /* ---------------------------------------------------------------------
-   Definizione dei 4 strumenti
+   Definizione degli strumenti
    --------------------------------------------------------------------- */
 const SCELTA = (nome, valore, testo, nota, scelto) =>
   `<label class="scelta"><input type="radio" name="${nome}" value="${valore}"${scelto ? ' checked' : ''}>` +
@@ -220,6 +234,50 @@ const STRUMENTI = {
     alCambioOpzioni: () => { const g = $('gruppoQualita'); if (g) g.hidden = valoreOpzione('formatoDest') === 'png'; },
     esegui: eseguiConvertiImmagini
   },
+  dividi: {
+    titolo: 'Dividi PDF',
+    descrizione: 'Separa le pagine di un PDF in più file e dai a ciascuno il nome che vuoi.',
+    classe: 't-ambra', tipo: 'pdf', minimo: 1, singolo: true,
+    testoArea: 'Seleziona il PDF da dividere',
+    accept: 'application/pdf,.pdf',
+    opzioni: `
+      <fieldset class="gruppo-opzione"><legend>Come dividere</legend><div class="scelte">
+        ${SCELTA('modoDividi', 'pagina', 'Una pagina per file', 'ogni pagina diventa un PDF', true)}
+        ${SCELTA('modoDividi', 'intervalli', 'Intervalli scelti', 'es. 1-3, 4, 5-8')}
+        ${SCELTA('modoDividi', 'ogni', 'Ogni N pagine', 'blocchi di pagine uguali')}
+      </div>
+      <div class="campo-dividi" id="campoIntervalli" hidden>
+        <label class="etichetta" for="testoIntervalli">Intervalli di pagine</label>
+        <input id="testoIntervalli" class="selettore" type="text" inputmode="text" placeholder="es. 1-3, 4, 5-8" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <p class="nota-opzione">Un file per ogni intervallo, separati dalla virgola. «5-» vuol dire dalla pagina 5 all'ultima. Le pagine non indicate restano fuori.</p>
+        <p class="errore-dividi" id="erroreIntervalli" hidden></p>
+      </div>
+      <div class="campo-dividi" id="campoOgni" hidden>
+        <label class="etichetta" for="numeroOgni">Pagine per ogni file</label>
+        <input id="numeroOgni" class="selettore" type="number" inputmode="numeric" min="1" step="1" value="2">
+      </div>
+      </fieldset>
+      <fieldset class="gruppo-opzione" id="gruppoPiano" hidden><legend>File da creare e nomi</legend>
+        <div class="serie-nomi">
+          <input id="prefissoSerie" class="selettore" type="text" placeholder="Es. Fattura" autocomplete="off" spellcheck="false" aria-label="Nome comune per numerare tutti i file">
+          <button id="applicaSerie" class="bottone-secondario" type="button">Numera tutti</button>
+        </div>
+        <p class="nota-opzione">Scrivi il nome di ogni file qui sotto, oppure un nome comune e tocca «Numera tutti» (Fattura_01, Fattura_02…). Togli la spunta ai file che non ti servono. Tocca la miniatura per vedere la pagina in grande.</p>
+        <p id="riepilogoPiano" class="riepilogo-piano"></p>
+        <ol id="pianoDivisione" class="piano-divisione"></ol>
+      </fieldset>`,
+    etichetta: () => {
+      const v = stato.voci[0];
+      if (!v || !v.pagine) return 'Lettura del PDF…';
+      const n = partiIncluse().length;
+      if (divisione.errore || !n) return 'Scegli le pagine da dividere';
+      return n === 1 ? 'Crea il PDF' : `Dividi in ${n} PDF (ZIP)`;
+    },
+    alAggiorna: aggiornaPiano,
+    alDigitare: (e) => { if (e.target.id === 'testoIntervalli' || e.target.id === 'numeroOgni') { clearTimeout(divisione.timer); divisione.timer = setTimeout(() => { aggiornaPiano(); aggiornaInterfaccia(); }, 250); } },
+    pronto: () => !divisione.errore && partiIncluse().length > 0,
+    esegui: eseguiDividi
+  },
   pdf2docx: {
     titolo: 'Estrai in Word',
     descrizione: 'Estrae il testo del PDF in un documento .docx modificabile.',
@@ -296,6 +354,10 @@ el.opzioni.addEventListener('change', () => {
   if (s && s.alCambioOpzioni) s.alCambioOpzioni();
   aggiornaInterfaccia();
 });
+el.opzioni.addEventListener('input', (e) => {
+  const s = STRUMENTI[stato.strumento];
+  if (s && s.alDigitare) s.alDigitare(e);
+});
 window.addEventListener('hashchange', instrada);
 instrada();
 
@@ -304,7 +366,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* =====================================================================
-   NAVIGAZIONE (#img2pdf, #pdf2img, #unisci, #comprimi, #docx2pdf, #xlsx2pdf, #pdf2docx)
+   NAVIGAZIONE (#img2pdf, #pdf2img, #unisci, #comprimi, #dividi, #docx2pdf, #xlsx2pdf, #pdf2docx)
    ===================================================================== */
 function instrada() {
   const id = location.hash.replace('#', '');
@@ -611,6 +673,7 @@ function aggiornaInterfaccia() {
   if (!stato.strumento) return;
   const s = STRUMENTI[stato.strumento];
   const n = stato.voci.length;
+  if (s.alAggiorna) s.alAggiorna();
   el.contenitoreLista.hidden = n === 0;
   el.conteggio.textContent = `${n} ${n === 1 ? 'file caricato' : 'file caricati'}`;
   el.suggerimento.hidden = n < 2;
@@ -624,7 +687,7 @@ function aggiornaInterfaccia() {
   });
   const conErrori = stato.voci.some((v) => v.errore);
   el.azione.textContent = stato.lavoro ? 'Elaborazione in corso…' : (n ? s.etichetta() : s.testoArea);
-  el.azione.disabled = !librerieOk || !!stato.lavoro || n < s.minimo || conErrori;
+  el.azione.disabled = !librerieOk || !!stato.lavoro || n < s.minimo || conErrori || (!!s.pronto && !s.pronto());
   if (conErrori && n && !stato.lavoro) el.azione.textContent = 'Rimuovi i file con errore';
 }
 
@@ -684,9 +747,12 @@ function mostraRisultato(r) {
   const cond = el.risultato.querySelector('.condividi');
   const tipo = r.blob.type || (est === '.zip' ? 'application/zip' : 'application/octet-stream');
   const prova = () => new File([r.blob], nomeFinale(), { type: tipo });
-  try { if (navigator.canShare && navigator.canShare({ files: [prova()] })) cond.hidden = false; } catch (e) { /* non disponibile */ }
+  // r.condividiFile: si condividono i singoli file (es. i PDF divisi) invece dello ZIP
+  const daCondividere = () => r.condividiFile && r.file ? r.file.map((f) => new File([f.blob], f.nome.split('/').pop(), { type: f.blob.type || 'application/pdf' })) : [prova()];
+  if (r.condividiFile && r.file) cond.querySelector('span').textContent = `Condividi i ${r.file.length} PDF`;
+  try { if (navigator.canShare && navigator.canShare({ files: daCondividere() })) cond.hidden = false; } catch (e) { /* non disponibile */ }
   cond.addEventListener('click', async () => {
-    try { await navigator.share({ files: [prova()], title: nomeFinale() }); }
+    try { await navigator.share({ files: daCondividere(), title: nomeFinale() }); }
     catch (e) { if (!e || e.name !== 'AbortError') notifica('Condivisione non riuscita: usa Scarica', true); }
   });
   el.risultato.querySelector('.ancora').addEventListener('click', () => { svuotaVoci(); aggiornaInterfaccia(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
@@ -711,10 +777,10 @@ async function mostraAnteprima(r) {
   };
   const immagine = (blob) => { const u = URL.createObjectURL(blob); urls.push(u); const i = new Image(); i.alt = ''; i.decoding = 'async'; i.src = u; return i; };
   if (r.file && r.file.length) {
-    const max = 12;
+    const max = r.tutti ? r.file.length : 12;
     for (const f of r.file.slice(0, max)) {
       if (!el.risultato.contains(box)) return;
-      const contenuto = /^image\//.test(f.blob.type) ? immagine(f.blob) : Object.assign(document.createElement('b'), { className: 'badge-tipo tipo-pdf', textContent: (f.nome.split('.').pop() || '').toUpperCase() });
+      const contenuto = /^image\//.test(f.blob.type) ? immagine(f.blob) : f.anteprima ? immagine(f.anteprima) : Object.assign(document.createElement('b'), { className: 'badge-tipo tipo-pdf', textContent: (f.nome.split('.').pop() || '').toUpperCase() });
       scheda(contenuto, `${f.nome.split('/').pop()} · ${formattaPeso(f.blob.size)}`, f.blob, f.nome);
     }
     if (r.file.length > max) { const p = document.createElement('p'); p.className = 'altri'; p.textContent = `…e altri ${r.file.length - max} file nello ZIP`; box.append(p); }
@@ -1053,6 +1119,304 @@ async function eseguiUnisci(lavoro) {
 }
 
 /* ---------------------------------------------------------------------
+   MODULO 9 – Dividi PDF (per pagina, per intervalli o ogni N pagine) e rinomina ogni file
+   --------------------------------------------------------------------- */
+
+function azzeraDivisione() {
+  divisione.miniature.forEach((m) => URL.revokeObjectURL(m.url));
+  divisione.miniature.clear(); divisione.nomi.clear(); divisione.escluse.clear();
+  divisione.voceId = null; divisione.chiave = null; divisione.parti = []; divisione.errore = null;
+}
+
+/** Calcola i file da creare. Restituisce { parti, errore }. */
+function calcolaParti(modo, testo, n) {
+  if (modo === 'ogni') {
+    const k = Math.floor(Number(testo));
+    if (!(k >= 1)) return { parti: [], errore: 'Scrivi quante pagine mettere in ogni file (1 o più).' };
+    const parti = [];
+    for (let da = 1; da <= n; da += k) parti.push({ da, a: Math.min(n, da + k - 1) });
+    return { parti, errore: null };
+  }
+  if (modo === 'intervalli') {
+    // trattini "lunghi" (correttore del telefono) e spazi intorno al trattino
+    const pulito = String(testo || '').replace(/[–—−]/g, '-').replace(/\s*-\s*/g, '-').trim();
+    if (!pulito) return { parti: [], errore: '' }; // ancora vuoto: nessun messaggio in rosso
+    const parti = [];
+    for (const pezzo of pulito.split(/[,;\s]+/).filter(Boolean)) {
+      const m = pezzo.match(/^(\d*)-(\d*)$/) || pezzo.match(/^(\d+)$/);
+      if (!m || (m[1] === '' && m[2] === '')) return { parti: [], errore: `«${pezzo}» non è un intervallo valido. Esempio: 1-3, 4, 5-8` };
+      const da = m[1] === '' ? 1 : Number(m[1]);
+      const a = m.length === 2 ? da : (m[2] === '' ? n : Number(m[2]));
+      if (da < 1 || a < 1) return { parti: [], errore: 'Le pagine partono da 1.' };
+      if (da > n || a > n) return { parti: [], errore: `Pagina ${Math.max(da, a)} inesistente: il PDF ha ${n} ${n === 1 ? 'pagina' : 'pagine'}.` };
+      if (da > a) return { parti: [], errore: `«${pezzo}»: la prima pagina deve venire prima dell'ultima.` };
+      parti.push({ da, a });
+    }
+    return { parti, errore: null };
+  }
+  return { parti: Array.from({ length: n }, (_, i) => ({ da: i + 1, a: i + 1 })), errore: null };
+}
+
+function nomePredefinito(base, p, n) {
+  const c = String(n).length, z = (x) => String(x).padStart(c, '0');
+  return p.da === p.a ? `${base}_pag${z(p.da)}` : `${base}_pag${z(p.da)}-${z(p.a)}`;
+}
+
+/** Nome del file (senza .pdf) ripulito dai caratteri non ammessi. */
+function nomeParte(voce, p) {
+  const scelto = (divisione.nomi.get(chiaveParte(p)) || '').trim().replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]+/g, '_').trim();
+  return scelto || nomePredefinito(nomeSenzaEstensione(voce.file.name), p, voce.pagine);
+}
+
+const partiIncluse = () => divisione.parti.filter((p) => !divisione.escluse.has(chiaveParte(p)));
+
+/** Ricostruisce l'elenco dei file da creare quando cambiano PDF, modo o intervalli. */
+function aggiornaPiano() {
+  if (stato.strumento !== 'dividi') return;
+  const gruppo = $('gruppoPiano');
+  if (!gruppo) return;
+  const voce = stato.voci[0];
+  const modo = valoreOpzione('modoDividi') || 'pagina';
+  $('campoIntervalli').hidden = modo !== 'intervalli';
+  $('campoOgni').hidden = modo !== 'ogni';
+  if (!voce) { azzeraDivisione(); gruppo.hidden = true; return; }
+  if (!voce.pagine || voce.errore) { gruppo.hidden = true; divisione.parti = []; divisione.chiave = null; return; }
+  const testo = modo === 'intervalli' ? $('testoIntervalli').value : modo === 'ogni' ? $('numeroOgni').value : '';
+  const chiave = [voce.id, modo, testo].join('|');
+  if (chiave === divisione.chiave) return;
+  if (divisione.voceId !== voce.id) { azzeraDivisione(); divisione.voceId = voce.id; }
+  divisione.chiave = chiave;
+  const { parti, errore } = calcolaParti(modo, testo, voce.pagine);
+  divisione.parti = parti;
+  divisione.errore = errore;
+  const err = $('erroreIntervalli');
+  err.hidden = !errore; err.textContent = errore || '';
+  gruppo.hidden = !parti.length;
+  disegnaPiano(voce);
+  generaMiniatureDivisione(voce);
+}
+
+function disegnaPiano(voce) {
+  const lista = $('pianoDivisione');
+  if (!lista) return;
+  const n = voce.pagine;
+  lista.replaceChildren(...divisione.parti.map((p, i) => {
+    const k = chiaveParte(p), quante = p.a - p.da + 1;
+    const li = document.createElement('li');
+    li.className = 'parte' + (divisione.escluse.has(k) ? ' esclusa' : '');
+    li.dataset.chiave = k;
+    li.dataset.pagina = p.da;
+    li.innerHTML = `
+      <input type="checkbox" class="parte-includi"${divisione.escluse.has(k) ? '' : ' checked'} aria-label="Crea il file ${i + 1}">
+      <button type="button" class="parte-mini" aria-label="Vedi la pagina ${p.da} in grande"><div class="attesa"></div></button>
+      <div class="parte-info">
+        <span class="parte-pagine"></span>
+        <span class="campo-nome"><input type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Nome del file ${i + 1}"><em>.pdf</em></span>
+      </div>`;
+    li.querySelector('.parte-pagine').textContent = `${i + 1}. ${p.da === p.a ? `Pagina ${p.da}` : `Pagine ${p.da}–${p.a}`} · ${quante} ${quante === 1 ? 'pagina' : 'pagine'}`;
+    const campo = li.querySelector('input[type=text]');
+    campo.value = divisione.nomi.get(k) || '';
+    campo.placeholder = nomePredefinito(nomeSenzaEstensione(voce.file.name), p, n);
+    if (!campo.value) campo.value = campo.placeholder;
+    campo.addEventListener('input', () => divisione.nomi.set(k, campo.value));
+    campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const s = li.nextElementSibling; if (s) s.querySelector('input[type=text]').focus(); else campo.blur(); } });
+    li.querySelector('.parte-includi').addEventListener('change', (e) => {
+      if (e.target.checked) divisione.escluse.delete(k); else divisione.escluse.add(k);
+      li.classList.toggle('esclusa', !e.target.checked);
+      aggiornaRiepilogo();
+    });
+    li.querySelector('.parte-mini').addEventListener('click', () => apriLente(voce, p));
+    const m = divisione.miniature.get(p.da);
+    if (m) mostraMiniaturaParte(li, m.url);
+    return li;
+  }));
+  const bottone = $('applicaSerie');
+  if (bottone && !bottone.dataset.pronto) {
+    bottone.dataset.pronto = '1';
+    bottone.addEventListener('click', applicaSerie);
+    $('prefissoSerie').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applicaSerie(); } });
+  }
+  aggiornaRiepilogo();
+}
+
+function aggiornaRiepilogo() {
+  const r = $('riepilogoPiano');
+  if (!r) return;
+  const incluse = partiIncluse();
+  const pagine = incluse.reduce((t, p) => t + p.a - p.da + 1, 0);
+  r.textContent = `${incluse.length} di ${divisione.parti.length} file da creare · ${pagine} ${pagine === 1 ? 'pagina' : 'pagine'}`;
+}
+
+/** «Numera tutti»: Nome_01, Nome_02… sui file spuntati. Campo vuoto = torna ai nomi automatici. */
+function applicaSerie() {
+  const voce = stato.voci[0];
+  if (!voce) return;
+  const prefisso = $('prefissoSerie').value.trim().replace(/\.pdf$/i, '');
+  const incluse = partiIncluse();
+  if (!prefisso) divisione.nomi.clear();
+  else {
+    const c = Math.max(2, String(incluse.length).length);
+    incluse.forEach((p, i) => divisione.nomi.set(chiaveParte(p), `${prefisso}_${String(i + 1).padStart(c, '0')}`));
+  }
+  disegnaPiano(voce);
+  notifica(prefisso ? `Nomi aggiornati: ${prefisso}_01, ${prefisso}_02…` : 'Nomi automatici ripristinati');
+}
+
+function mostraMiniaturaParte(li, url) {
+  const b = li.querySelector('.parte-mini');
+  const img = new Image(); img.alt = ''; img.decoding = 'async'; img.src = url;
+  b.replaceChildren(img);
+}
+
+/* Miniature della prima pagina di ogni file, una alla volta e piccole (memoria del telefono) */
+async function generaMiniatureDivisione(voce) {
+  if (miniatureDivisioneInCorso) return;
+  miniatureDivisioneInCorso = true;
+  let pdf = null;
+  try {
+    const mancante = () => divisione.voceId === voce.id && stato.voci[0] === voce
+      ? divisione.parti.find((p) => !divisione.miniature.has(p.da)) : null;
+    let p;
+    while ((p = mancante())) {
+      if (!pdf) pdf = await apriPdfJs(voce);
+      const pagina = await pdf.getPage(p.da);
+      const vp = pagina.getViewport({ scale: 1 });
+      const canvas = await disegnaPagina(pagina, 160 / Math.max(vp.width, vp.height));
+      pagina.cleanup();
+      const blob = await canvasInBlob(canvas, 'image/jpeg', 0.8);
+      liberaCanvas(canvas);
+      if (divisione.voceId !== voce.id) break;
+      const m = { blob, url: URL.createObjectURL(blob) };
+      divisione.miniature.set(p.da, m);
+      const lista = $('pianoDivisione');
+      if (lista) lista.querySelectorAll(`.parte[data-pagina="${p.da}"]`).forEach((li) => mostraMiniaturaParte(li, m.url));
+      await pausa();
+    }
+  } catch (e) {
+    console.warn('miniature divisione', e);
+  } finally {
+    if (pdf) pdf.destroy();
+    miniatureDivisioneInCorso = false;
+  }
+  // nel frattempo il piano può essere cambiato: ricontrolla
+  if (stato.voci[0] && divisione.voceId === stato.voci[0].id && divisione.parti.some((p) => !divisione.miniature.has(p.da))) {
+    setTimeout(() => generaMiniatureDivisione(stato.voci[0]), 0);
+  }
+}
+
+/** Pagina in grande per capire che nome dare al file; frecce per scorrere le pagine del file. */
+async function apriLente(voce, parte) {
+  const ov = document.createElement('div');
+  ov.className = 'lente';
+  ov.innerHTML = `<div class="lente-box" role="dialog" aria-modal="true" aria-label="Anteprima pagina">
+      <div class="lente-testa"><strong></strong><button type="button" class="lente-chiudi" aria-label="Chiudi">✕</button></div>
+      <div class="lente-pagina"><div class="attesa"></div></div>
+      <div class="lente-nav" ${parte.da === parte.a ? 'hidden' : ''}>
+        <button type="button" class="bottone-secondario prec" aria-label="Pagina precedente"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <span></span>
+        <button type="button" class="bottone-secondario succ" aria-label="Pagina successiva"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div></div>`;
+  document.body.append(ov);
+  document.body.classList.add('lente-aperta');
+  let pdf = null, chiusa = false, numero = parte.da, turno = 0;
+  const chiudi = () => {
+    if (chiusa) return;
+    chiusa = true;
+    ov.querySelectorAll('canvas').forEach(liberaCanvas);
+    ov.remove();
+    document.body.classList.remove('lente-aperta');
+    document.removeEventListener('keydown', tasti);
+    if (pdf) pdf.destroy();
+  };
+  const tasti = (e) => {
+    if (e.key === 'Escape') chiudi();
+    else if (e.key === 'ArrowLeft') vai(-1);
+    else if (e.key === 'ArrowRight') vai(+1);
+  };
+  document.addEventListener('keydown', tasti);
+  ov.addEventListener('click', (e) => { if (e.target === ov) chiudi(); });
+  ov.querySelector('.lente-chiudi').addEventListener('click', chiudi);
+  ov.querySelector('.prec').addEventListener('click', () => vai(-1));
+  ov.querySelector('.succ').addEventListener('click', () => vai(+1));
+  const box = ov.querySelector('.lente-pagina');
+  async function mostra() {
+    const mio = ++turno;
+    ov.querySelector('.lente-testa strong').textContent = `Pagina ${numero} di ${voce.pagine}`;
+    ov.querySelector('.lente-nav span').textContent = `${numero - parte.da + 1} / ${parte.a - parte.da + 1}`;
+    ov.querySelector('.prec').disabled = numero <= parte.da;
+    ov.querySelector('.succ').disabled = numero >= parte.a;
+    try {
+      if (!pdf) pdf = await apriPdfJs(voce);
+      if (chiusa) { pdf.destroy(); return; }
+      const pagina = await pdf.getPage(numero);
+      const vp = pagina.getViewport({ scale: 1 });
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = box.clientWidth || 320, h = box.clientHeight || 480;
+      const canvas = await disegnaPagina(pagina, Math.min(w / vp.width, h / vp.height) * dpr);
+      pagina.cleanup();
+      if (chiusa || mio !== turno) { liberaCanvas(canvas); return; }
+      box.querySelectorAll('canvas').forEach(liberaCanvas);
+      box.replaceChildren(canvas);
+    } catch (e) {
+      if (!chiusa) box.textContent = 'Anteprima non disponibile';
+    }
+  }
+  function vai(d) {
+    const nuovo = Math.min(parte.a, Math.max(parte.da, numero + d));
+    if (nuovo !== numero) { numero = nuovo; mostra(); }
+  }
+  ov.querySelector('.lente-chiudi').focus();
+  mostra();
+}
+
+async function eseguiDividi(lavoro) {
+  const { PDFDocument } = PDFLib;
+  const voce = stato.voci[0];
+  const parti = partiIncluse().map((p) => ({ ...p, nome: nomeParte(voce, p) }));
+  if (!parti.length) throw new Error('nessuna pagina scelta');
+  mostraAvanzamento(0, 'Lettura del PDF…');
+  await pausa();
+  let sorgente;
+  try { sorgente = await PDFDocument.load(await voce.file.arrayBuffer(), { updateMetadata: false }); }
+  catch (e) { e.nomeFile = voce.file.name; throw e; }
+  const zip = new JSZip(), file = [];
+  for (let i = 0; i < parti.length; i++) {
+    controllaAnnullato(lavoro);
+    mostraAvanzamento(i / parti.length, `File ${i + 1} di ${parti.length}`);
+    await pausa();
+    const p = parti[i];
+    const nuovo = await PDFDocument.create();
+    // copyPages mantiene formato, rotazione, testo e contenuto vettoriale delle pagine
+    const pagine = await nuovo.copyPages(sorgente, Array.from({ length: p.a - p.da + 1 }, (_, j) => p.da - 1 + j));
+    pagine.forEach((x) => nuovo.addPage(x));
+    nuovo.setTitle(p.nome);
+    const blob = new Blob([await nuovo.save({ useObjectStreams: true })], { type: 'application/pdf' });
+    const nome = nomeUnico(zip, p.nome + '.pdf');
+    zip.file(nome, blob);
+    const m = divisione.miniature.get(p.da);
+    file.push({ nome, blob, anteprima: m && m.blob, parte: p });
+  }
+  controllaAnnullato(lavoro);
+  const n = voce.pagine || sorgente.getPageCount();
+  if (file.length === 1) {
+    const p = file[0].parte;
+    mostraAvanzamento(1, 'Fatto');
+    mostraRisultato({ titolo: 'PDF pronto! 🎉', righe: [`${p.da === p.a ? `Pagina ${p.da}` : `Pagine ${p.da}–${p.a}`} di ${n}, testo e qualità originali.`],
+      blob: file[0].blob, nome: file[0].nome, scaricaSubito: true });
+    return;
+  }
+  mostraAvanzamento(0.97, 'Creazione dello ZIP…');
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  controllaAnnullato(lavoro);
+  mostraAvanzamento(1, 'Fatto');
+  mostraRisultato({
+    titolo: 'PDF divisi! 🎉',
+    righe: [`${file.length} file creati dalle ${n} pagine di "${escapeHtml(voce.file.name)}", con i nomi che hai scelto.`, 'Scarica tutto nello ZIP, oppure tocca un file qui sotto per scaricarlo da solo.'],
+    blob, nome: nomeSenzaEstensione(voce.file.name) + '-diviso.zip', file, tutti: true, condividiFile: true, scaricaSubito: true
+  });
+}
+
+/* ---------------------------------------------------------------------
    MODULO 4 – Comprimi PDF
    --------------------------------------------------------------------- */
 async function eseguiComprimi(lavoro) {
@@ -1273,7 +1637,7 @@ function messaggioErrore(e, voce) {
   if (e && e.name === 'NessunTesto') return `${chi}il PDF non contiene testo (è una scansione): non c'è nulla da estrarre in Word.`;
   if (e && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) return `${chi}il telefono non permette più di leggere il file. Toccalo con il cestino, poi sceglilo di nuovo (meglio dalla cartella Download).`;
   if (e && e.name === 'PasswordException') return `${chi}PDF protetto da password, non sbloccato.`;
-  if (/encrypt/i.test(testo)) return `${chi}PDF protetto da password: non si può unire. Rimuovi la protezione (o comprimilo prima con questa app, che chiede la password) e riprova.`;
+  if (/encrypt/i.test(testo)) return `${chi}PDF protetto da password: non si può unire né dividere. Rimuovi la protezione (o comprimilo prima con questa app, che chiede la password) e riprova.`;
   if (e && (e.name === 'InvalidPDFException' || /invalid pdf|no pdf header|failed to parse/i.test(testo))) return `${chi}il file non è un PDF valido o è danneggiato.`;
   if (testo === 'immagine' || /decode|source image/i.test(testo)) return `${chi}immagine non leggibile o formato non supportato.`;
   if (testo === 'memoria' || /memory|allocation/i.test(testo)) return `${chi}memoria del dispositivo esaurita. Prova con meno file o con una risoluzione più bassa.`;
