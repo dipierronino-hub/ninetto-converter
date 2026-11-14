@@ -1,6 +1,6 @@
 # ninetto-converter
 
-PWA 100% client-side: Immagini in PDF, PDF in Immagini, Unisci PDF, Comprimi PDF.
+PWA 100% client-side: Immagini in PDF, PDF in Immagini, Unisci PDF, Dividi PDF (per pagina, intervalli o ogni N pagine, con nome per ogni file), Comprimi PDF, Converti immagini, Word/Excel in PDF, Estrai in Word.
 Nessun file lascia il dispositivo. Funziona offline dopo la prima apertura.
 
 ## File
